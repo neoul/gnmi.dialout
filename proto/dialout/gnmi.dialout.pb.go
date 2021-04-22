@@ -11,6 +11,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -20,6 +21,103 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// PublishResponse is the message sent within the Publish RPC of the gNMI
+// dial-out service by the client (collector) to the target. It is used for
+// the flow-control of the telemetry update messages.
+type PublishResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Types that are assignable to Request:
+	//	*PublishResponse_Stop
+	//	*PublishResponse_Restart
+	//	*PublishResponse_StopInterval
+	Request isPublishResponse_Request `protobuf_oneof:"request"`
+}
+
+func (x *PublishResponse) Reset() {
+	*x = PublishResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dialout_gnmi_dialout_proto_msgTypes[0]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PublishResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishResponse) ProtoMessage() {}
+
+func (x *PublishResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dialout_gnmi_dialout_proto_msgTypes[0]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishResponse.ProtoReflect.Descriptor instead.
+func (*PublishResponse) Descriptor() ([]byte, []int) {
+	return file_dialout_gnmi_dialout_proto_rawDescGZIP(), []int{0}
+}
+
+func (m *PublishResponse) GetRequest() isPublishResponse_Request {
+	if m != nil {
+		return m.Request
+	}
+	return nil
+}
+
+func (x *PublishResponse) GetStop() bool {
+	if x, ok := x.GetRequest().(*PublishResponse_Stop); ok {
+		return x.Stop
+	}
+	return false
+}
+
+func (x *PublishResponse) GetRestart() bool {
+	if x, ok := x.GetRequest().(*PublishResponse_Restart); ok {
+		return x.Restart
+	}
+	return false
+}
+
+func (x *PublishResponse) GetStopInterval() int64 {
+	if x, ok := x.GetRequest().(*PublishResponse_StopInterval); ok {
+		return x.StopInterval
+	}
+	return 0
+}
+
+type isPublishResponse_Request interface {
+	isPublishResponse_Request()
+}
+
+type PublishResponse_Stop struct {
+	Stop bool `protobuf:"varint,1,opt,name=stop,proto3,oneof"` // Stop signal; the target stop sending the update immediately.
+}
+
+type PublishResponse_Restart struct {
+	Restart bool `protobuf:"varint,2,opt,name=restart,proto3,oneof"` // Restart signal; the target restart sending the update immediately.
+}
+
+type PublishResponse_StopInterval struct {
+	StopInterval int64 `protobuf:"varint,3,opt,name=stop_interval,json=stopInterval,proto3,oneof"` // Stop interval in nanoseconds; the target doesn't send any of the update in this interval.
+}
+
+func (*PublishResponse_Stop) isPublishResponse_Request() {}
+
+func (*PublishResponse_Restart) isPublishResponse_Request() {}
+
+func (*PublishResponse_StopInterval) isPublishResponse_Request() {}
+
 var File_dialout_gnmi_dialout_proto protoreflect.FileDescriptor
 
 var file_dialout_gnmi_dialout_proto_rawDesc = []byte{
@@ -28,22 +126,43 @@ var file_dialout_gnmi_dialout_proto_rawDesc = []byte{
 	0x6d, 0x69, 0x2e, 0x64, 0x69, 0x61, 0x6c, 0x6f, 0x75, 0x74, 0x1a, 0x30, 0x67, 0x69, 0x74, 0x68,
 	0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6f, 0x70, 0x65, 0x6e, 0x63, 0x6f, 0x6e, 0x66, 0x69,
 	0x67, 0x2f, 0x67, 0x6e, 0x6d, 0x69, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x6e, 0x6d,
-	0x69, 0x2f, 0x67, 0x6e, 0x6d, 0x69, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x32, 0x4d, 0x0a, 0x0b,
-	0x67, 0x4e, 0x4d, 0x49, 0x44, 0x69, 0x61, 0x6c, 0x4f, 0x75, 0x74, 0x12, 0x3e, 0x0a, 0x07, 0x50,
-	0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x12, 0x17, 0x2e, 0x67, 0x6e, 0x6d, 0x69, 0x2e, 0x53, 0x75,
-	0x62, 0x73, 0x63, 0x72, 0x69, 0x62, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a,
-	0x16, 0x2e, 0x67, 0x6e, 0x6d, 0x69, 0x2e, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x62, 0x65,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x28, 0x01, 0x30, 0x01, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+	0x69, 0x2f, 0x67, 0x6e, 0x6d, 0x69, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x75, 0x0a, 0x0f,
+	0x50, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
+	0x14, 0x0a, 0x04, 0x73, 0x74, 0x6f, 0x70, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x48, 0x00, 0x52,
+	0x04, 0x73, 0x74, 0x6f, 0x70, 0x12, 0x1a, 0x0a, 0x07, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x48, 0x00, 0x52, 0x07, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72,
+	0x74, 0x12, 0x25, 0x0a, 0x0d, 0x73, 0x74, 0x6f, 0x70, 0x5f, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x76,
+	0x61, 0x6c, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x48, 0x00, 0x52, 0x0c, 0x73, 0x74, 0x6f, 0x70,
+	0x49, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x42, 0x09, 0x0a, 0x07, 0x72, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x32, 0x54, 0x0a, 0x0b, 0x67, 0x4e, 0x4d, 0x49, 0x44, 0x69, 0x61, 0x6c, 0x4f,
+	0x75, 0x74, 0x12, 0x45, 0x0a, 0x07, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x12, 0x17, 0x2e,
+	0x67, 0x6e, 0x6d, 0x69, 0x2e, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x62, 0x65, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a, 0x1d, 0x2e, 0x67, 0x6e, 0x6d, 0x69, 0x2e, 0x64, 0x69,
+	0x61, 0x6c, 0x6f, 0x75, 0x74, 0x2e, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x33,
 }
 
+var (
+	file_dialout_gnmi_dialout_proto_rawDescOnce sync.Once
+	file_dialout_gnmi_dialout_proto_rawDescData = file_dialout_gnmi_dialout_proto_rawDesc
+)
+
+func file_dialout_gnmi_dialout_proto_rawDescGZIP() []byte {
+	file_dialout_gnmi_dialout_proto_rawDescOnce.Do(func() {
+		file_dialout_gnmi_dialout_proto_rawDescData = protoimpl.X.CompressGZIP(file_dialout_gnmi_dialout_proto_rawDescData)
+	})
+	return file_dialout_gnmi_dialout_proto_rawDescData
+}
+
+var file_dialout_gnmi_dialout_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_dialout_gnmi_dialout_proto_goTypes = []interface{}{
-	(*gnmi.SubscribeResponse)(nil), // 0: gnmi.SubscribeResponse
-	(*gnmi.SubscribeRequest)(nil),  // 1: gnmi.SubscribeRequest
+	(*PublishResponse)(nil),        // 0: gnmi.dialout.PublishResponse
+	(*gnmi.SubscribeResponse)(nil), // 1: gnmi.SubscribeResponse
 }
 var file_dialout_gnmi_dialout_proto_depIdxs = []int32{
-	0, // 0: gnmi.dialout.gNMIDialOut.Publish:input_type -> gnmi.SubscribeResponse
-	1, // 1: gnmi.dialout.gNMIDialOut.Publish:output_type -> gnmi.SubscribeRequest
+	1, // 0: gnmi.dialout.gNMIDialOut.Publish:input_type -> gnmi.SubscribeResponse
+	0, // 1: gnmi.dialout.gNMIDialOut.Publish:output_type -> gnmi.dialout.PublishResponse
 	1, // [1:2] is the sub-list for method output_type
 	0, // [0:1] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
@@ -56,18 +175,38 @@ func file_dialout_gnmi_dialout_proto_init() {
 	if File_dialout_gnmi_dialout_proto != nil {
 		return
 	}
+	if !protoimpl.UnsafeEnabled {
+		file_dialout_gnmi_dialout_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*PublishResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+	}
+	file_dialout_gnmi_dialout_proto_msgTypes[0].OneofWrappers = []interface{}{
+		(*PublishResponse_Stop)(nil),
+		(*PublishResponse_Restart)(nil),
+		(*PublishResponse_StopInterval)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_dialout_gnmi_dialout_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   0,
+			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_dialout_gnmi_dialout_proto_goTypes,
 		DependencyIndexes: file_dialout_gnmi_dialout_proto_depIdxs,
+		MessageInfos:      file_dialout_gnmi_dialout_proto_msgTypes,
 	}.Build()
 	File_dialout_gnmi_dialout_proto = out.File
 	file_dialout_gnmi_dialout_proto_rawDesc = nil

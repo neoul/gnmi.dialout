@@ -51,7 +51,7 @@ func (c *gNMIDialOutClient) Publish(ctx context.Context, opts ...grpc.CallOption
 
 type GNMIDialOut_PublishClient interface {
 	Send(*gnmi.SubscribeResponse) error
-	Recv() (*gnmi.SubscribeRequest, error)
+	Recv() (*PublishResponse, error)
 	grpc.ClientStream
 }
 
@@ -63,8 +63,8 @@ func (x *gNMIDialOutPublishClient) Send(m *gnmi.SubscribeResponse) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *gNMIDialOutPublishClient) Recv() (*gnmi.SubscribeRequest, error) {
-	m := new(gnmi.SubscribeRequest)
+func (x *gNMIDialOutPublishClient) Recv() (*PublishResponse, error) {
+	m := new(PublishResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func _GNMIDialOut_Publish_Handler(srv interface{}, stream grpc.ServerStream) err
 }
 
 type GNMIDialOut_PublishServer interface {
-	Send(*gnmi.SubscribeRequest) error
+	Send(*PublishResponse) error
 	Recv() (*gnmi.SubscribeResponse, error)
 	grpc.ServerStream
 }
@@ -123,7 +123,7 @@ type gNMIDialOutPublishServer struct {
 	grpc.ServerStream
 }
 
-func (x *gNMIDialOutPublishServer) Send(m *gnmi.SubscribeRequest) error {
+func (x *gNMIDialOutPublishServer) Send(m *PublishResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
