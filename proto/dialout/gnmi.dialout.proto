@@ -19,5 +19,16 @@ service gNMIDialOut {
   // be through the OpenConfig telemetry configuration and operational state
   // model:
   // https://github.com/openconfig/public/blob/master/release/models/telemetry/openconfig-telemetry.yang
-  rpc Publish(stream SubscribeResponse) returns (stream SubscribeRequest);
+  rpc Publish(stream SubscribeResponse) returns (stream PublishResponse);
+}
+
+// PublishResponse is the message sent within the Publish RPC of the gNMI
+// dial-out service by the client (collector) to the target. It is used for
+// the flow-control of the telemetry update messages.
+message PublishResponse {
+	oneof request {
+		bool stop = 1;             // Stop signal; the target stop sending the update immediately.
+    bool restart = 2;          // Restart signal; the target restart sending the update immediately.
+    int64 stop_interval = 3;   // Stop interval in nanoseconds; the target doesn't send any of the update in this interval.
+	}
 }
