@@ -152,7 +152,7 @@ func NewDialOutClient(serverAddr string, tls bool, caFilePath string) (*dialOutC
 
 	if tls {
 		if caFilePath == "" {
-			caFilePath = data.Path("../../../../../github.com/robot303/gnmi.dialout/tls/client.crt")
+			caFilePath = data.Path("../../../../../github.com/robot303/gnmi.dialout/tls/ca.crt")
 		}
 		creds, err := credentials.NewClientTLSFromFile(caFilePath, *serverHostOverride)
 		if err != nil {
@@ -210,7 +210,9 @@ func NewDialOutClient(serverAddr string, tls bool, caFilePath string) (*dialOutC
 func TestRun() *dialOutClient {
 	log.Println("[TestRun] Start")
 	serverAddr := "localhost:8088"
-	client, err := NewDialOutClient(serverAddr, false, "")
+	tlsEnable := true
+	tlsFilePath := ""
+	client, err := NewDialOutClient(serverAddr, tlsEnable, tlsFilePath)
 	if err != nil {
 		log.Println("[TestRun] Failed to create new dial-out client")
 		return nil
