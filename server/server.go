@@ -148,7 +148,7 @@ func NewDialOutServer(listenAddr string, tls bool, caFilePath string, keyFilePat
 func TestRun() {
 	log.Println("[TestRun] Start")
 	listenAddr := "localhost:8088"
-	tlsEnable := false
+	tlsEnable := true
 	tlsFilePath := ""
 	keyFilePath := ""
 	err := NewDialOutServer(listenAddr, tlsEnable, tlsFilePath, keyFilePath)
