@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,6 +16,7 @@ import (
 var clientCount int
 
 type GNMIDialOutClient struct {
+	Clientid int
 	pb.GNMIDialOutClient
 	pb.GNMIDialOut_PublishClient
 	Stop chan time.Duration // -1: start, 0: stop, 0>: stop interval
@@ -23,11 +24,10 @@ type GNMIDialOutClient struct {
 	conn      *grpc.ClientConn
 	respchan  chan *gnmi.SubscribeResponse
 	waitgroup *sync.WaitGroup
-	clientid  int
 }
 
 func (client *GNMIDialOutClient) String() string {
-	return fmt.Sprintf("client[%d]", client.clientid)
+	return "client[" + strconv.Itoa(client.Clientid) + "]"
 }
 
 func (client *GNMIDialOutClient) Close() {
@@ -36,7 +36,7 @@ func (client *GNMIDialOutClient) Close() {
 	client.conn.Close()
 	client.waitgroup.Wait()
 	client.waitgroup = nil
-	log.Printf("gnmi.dialout.%v.closed", client)
+	Printf("gnmi.dialout.%v.closed", client)
 }
 
 func (client *GNMIDialOutClient) SendMessage(message []*gnmi.SubscribeResponse) error {
@@ -55,7 +55,7 @@ func recv(client *GNMIDialOutClient) {
 		publishResponse, err := client.Recv()
 		if err != nil {
 			if err == io.EOF {
-				log.Printf("gnmi.dialout.%v.recv.closed", client)
+				Printf("gnmi.dialout.%v.recv.closed", client)
 				return
 			}
 			return
@@ -76,20 +76,20 @@ func send(client *GNMIDialOutClient) {
 	for {
 		subscribeResponse, ok := <-client.respchan
 		if !ok {
-			log.Printf("gnmi.dialout.%v.send.shutdown", client)
+			Printf("gnmi.dialout.%v.send.shutdown", client)
 			client.CloseSend()
 			return
 		}
 		if err := client.Send(subscribeResponse); err != nil {
-			log.Printf("gnmi.dialout.%v.send.err=%v", client, err)
+			Printf("gnmi.dialout.%v.send.err=%v", client, err)
 			client.CloseSend()
 			return
 		}
-		log.Printf("gnmi.dialout.%v.send.msg=%v", client, subscribeResponse)
+		Printf("gnmi.dialout.%v.send.msg=%v", client, subscribeResponse)
 	}
 }
 
-func AccessToDialOutService(serverAddr string, tls bool, caFilePath string) (*GNMIDialOutClient, error) {
+func NewGNMIDialOutClient(serverAddr string, tls bool, caFilePath string) (*GNMIDialOutClient, error) {
 	clientCount++
 	var opts []grpc.DialOption
 
@@ -111,14 +111,14 @@ func AccessToDialOutService(serverAddr string, tls bool, caFilePath string) (*GN
 	conn, err := grpc.Dial(serverAddr, opts...)
 	if err != nil {
 		err := fmt.Errorf("gnmi.dialout.client[%v].dial.err=%v", clientCount, err)
-		log.Print(err)
+		Print(err)
 		return nil, err
 	}
 
 	pbclient := pb.NewGNMIDialOutClient(conn)
 	if pbclient == nil {
 		err := fmt.Errorf("gnmi.dialout.client[%v].create.err", clientCount)
-		log.Print(err)
+		Print(err)
 		return nil, err
 	}
 
@@ -127,14 +127,14 @@ func AccessToDialOutService(serverAddr string, tls bool, caFilePath string) (*GN
 		conn:              conn,
 		respchan:          make(chan *gnmi.SubscribeResponse, 256),
 		waitgroup:         new(sync.WaitGroup),
-		clientid:          clientCount,
+		Clientid:          clientCount,
 	}
 
 	// [FIXME] need to update context control
 	stream, err := client.Publish(context.Background())
 	if err != nil {
 		err := fmt.Errorf("gnmi.dialout.%v.publish.err", client)
-		log.Print(err)
+		Print(err)
 		return nil, err
 	}
 	client.GNMIDialOut_PublishClient = stream
@@ -146,6 +146,6 @@ func AccessToDialOutService(serverAddr string, tls bool, caFilePath string) (*GN
 	// Send publish messages to server
 	client.waitgroup.Add(1)
 	go send(client)
-	log.Printf("gnmi.dialout.%v.created", client)
+	Printf("gnmi.dialout.%v.created", client)
 	return client, nil
 }

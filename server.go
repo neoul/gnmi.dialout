@@ -2,7 +2,6 @@ package dialout
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"sync"
 
@@ -27,20 +26,20 @@ func (server *GNMIDialoutServer) Serve() error {
 	if err := server.GRPCServer.Serve(server.Listener); err != nil {
 		server.GRPCServer.Stop()
 		err := fmt.Errorf("gnmi.dialout.server.serve.err=%v", err)
-		log.Print(err)
+		Print(err)
 		return err
 	}
 	return nil
 }
 
-func (server *GNMIDialoutServer) Stop(sessionid int) {
+func (server *GNMIDialoutServer) PauseSession(sessionid int) {
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
 		ss <- true
 	}
 }
 
-func (server *GNMIDialoutServer) Start(sessionid int) {
+func (server *GNMIDialoutServer) RestartSession(sessionid int) {
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
 		ss <- false
@@ -59,7 +58,7 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 		close(stopSignal)
 		delete(s.stream, sessionid)
 		delete(s.stopSignal, sessionid)
-		log.Printf("gnmi.dialout.server.session[%d].close.complete", sessionid)
+		Printf("gnmi.dialout.server.session[%d].close.complete", sessionid)
 		wg.Wait()
 	}()
 
@@ -68,18 +67,18 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 		for {
 			stop, ok := <-stopSignal
 			if !ok {
-				log.Printf("gnmi.dialout.server.session[%d].stop-signal.closed", sessionid)
+				Printf("gnmi.dialout.server.session[%d].stop-signal.closed", sessionid)
 				return
 			}
 			request := buildPublishResponse(stop)
 			if err := stream.Send(request); err != nil {
-				log.Printf("gnmi.dialout.server.session[%d].stop-signal.error=%s", sessionid, err)
+				Printf("gnmi.dialout.server.session[%d].stop-signal.error=%s", sessionid, err)
 				return
 			}
 			if stop {
-				log.Printf("gnmi.dialout.server.session[%d].stop-signal.stop", sessionid)
+				Printf("gnmi.dialout.server.session[%d].stop-signal.stop", sessionid)
 			} else {
-				log.Printf("gnmi.dialout.server.session[%d].stop-signal.restart", sessionid)
+				Printf("gnmi.dialout.server.session[%d].stop-signal.restart", sessionid)
 			}
 		}
 	}()
@@ -89,7 +88,7 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("gnmi.dialout.server.recv.msg=%s", response)
+		Printf("gnmi.dialout.server.recv.msg=%s", response)
 	}
 }
 
@@ -97,7 +96,7 @@ func NewGNMIDialoutServer(listenAddr string, tls bool, caFilePath string, keyFil
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		err := fmt.Errorf("gnmi.dialout.server.listen.err=%s", err)
-		log.Print(err)
+		Print(err)
 		return nil, err
 	}
 
@@ -112,7 +111,7 @@ func NewGNMIDialoutServer(listenAddr string, tls bool, caFilePath string, keyFil
 		creds, err := credentials.NewServerTLSFromFile(caFilePath, keyFilePath)
 		if err != nil {
 			err := fmt.Errorf("gnmi.dialout.server.creds.err=%v", err)
-			log.Print(err)
+			Print(err)
 			return nil, err
 		}
 		opts = []grpc.ServerOption{grpc.Creds(creds)}

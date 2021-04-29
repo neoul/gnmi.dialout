@@ -19,7 +19,7 @@ func TestGNMIDialOut(t *testing.T) {
 	}
 	go server.Serve()
 
-	client, err := AccessToDialOutService(listenAddr, tlsEnable, tlsFilePath)
+	client, err := NewGNMIDialOutClient(listenAddr, tlsEnable, tlsFilePath)
 	if err != nil {
 		t.Error(err)
 		return
