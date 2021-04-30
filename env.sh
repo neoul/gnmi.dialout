@@ -1,0 +1,6 @@
+export GRPC_TRACE=tcp,secure_endpoint,transport_security
+export GRPC_VERBOSITY=DEBUG
+export GRPC_TRACE=all
+export GRPC_GO_LOG_VERBOSITY_LEVEL=99
+export GRPC_GO_LOG_SEVERITY_LEVEL=debug
+

@@ -6,3 +6,9 @@ This is gNMI Dial-out Telemetry service definition that reuses the messages of g
 cd proto
 go generate
 ```
+
+## Test with grpc log
+
+```bash
+GRPC_GO_LOG_SEVERITY_LEVEL=info GRPC_GO_LOG_VERBOSITY_LEVEL=2 go test -v -run TestTLS
+```

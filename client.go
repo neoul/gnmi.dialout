@@ -2,6 +2,7 @@ package dialout
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	pb "github.com/neoul/gnmi.dialout/proto/dialout"
 	"github.com/openconfig/gnmi/proto/gnmi"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 var clientCount int
@@ -24,6 +26,7 @@ type GNMIDialOutClient struct {
 	conn      *grpc.ClientConn
 	respchan  chan *gnmi.SubscribeResponse
 	waitgroup *sync.WaitGroup
+	ctxCancel context.CancelFunc
 }
 
 func (client *GNMIDialOutClient) String() string {
@@ -31,12 +34,13 @@ func (client *GNMIDialOutClient) String() string {
 }
 
 func (client *GNMIDialOutClient) Close() {
+	client.ctxCancel()
 	close(client.respchan)
 	client.respchan = nil
 	client.conn.Close()
 	client.waitgroup.Wait()
 	client.waitgroup = nil
-	Printf("gnmi.dialout.%v.closed", client)
+	LogPrintf("gnmi.dialout.%v.closed", client)
 }
 
 func (client *GNMIDialOutClient) SendMessage(message []*gnmi.SubscribeResponse) error {
@@ -55,7 +59,7 @@ func recv(client *GNMIDialOutClient) {
 		publishResponse, err := client.Recv()
 		if err != nil {
 			if err == io.EOF {
-				Printf("gnmi.dialout.%v.recv.closed", client)
+				LogPrintf("gnmi.dialout.%v.recv.closed", client)
 				return
 			}
 			return
@@ -76,49 +80,47 @@ func send(client *GNMIDialOutClient) {
 	for {
 		subscribeResponse, ok := <-client.respchan
 		if !ok {
-			Printf("gnmi.dialout.%v.send.shutdown", client)
+			LogPrintf("gnmi.dialout.%v.send.shutdown", client)
 			client.CloseSend()
 			return
 		}
 		if err := client.Send(subscribeResponse); err != nil {
-			Printf("gnmi.dialout.%v.send.err=%v", client, err)
+			LogPrintf("gnmi.dialout.%v.send.err=%v", client, err)
 			client.CloseSend()
 			return
 		}
-		Printf("gnmi.dialout.%v.send.msg=%v", client, subscribeResponse)
+		LogPrintf("gnmi.dialout.%v.send.msg=%v", client, subscribeResponse)
 	}
 }
 
-func NewGNMIDialOutClient(serverAddr string, tls bool, caFilePath string) (*GNMIDialOutClient, error) {
+// serverName is used to verify the hostname on the returned certificates unless skipverify is given.
+// The serverName is also included in the client's handshake to support virtual hosting unless it is an IP address.
+func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipverify bool, cafile string,
+	clientCert string, clientKey string, username string, password string) (*GNMIDialOutClient, error) {
 	clientCount++
-	var opts []grpc.DialOption
 
-	// if tls {
-	// 	if caFilePath == "" {
-	// 		caFilePath = data.Path("../../../../../github.com/neoul/gnmi.dialout/tls/client.crt")
-	// 	}
-	// 	creds, err := credentials.NewClientTLSFromFile(caFilePath, *serverHostOverride)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to create TLS crdentials %v", err)
-	// 	}
-	// 	opts = append(opts, grpc.WithTransportCredentials(creds))
-	// } else {
-	// 	opts = append(opts, grpc.WithInsecure())
-	// }
-	opts = append(opts, grpc.WithInsecure())
-	opts = append(opts, grpc.WithBlock())
+	opts, err := ClientCredentials(serverName, cafile, clientCert, clientKey, skipverify, insecure)
+	if err != nil {
+		err := fmt.Errorf("gnmi.dialout.client[%v].credential.err=%v", clientCount, err)
+		LogPrint(err)
+		return nil, err
+	}
+	if !insecure {
+		opts = append(opts, UserCredentials(username, password)...)
+	}
+	// opts = append(opts, grpc.WithBlock())
 	// [FIXME] grpc.DialContext vs grpc.Dial
-	conn, err := grpc.Dial(serverAddr, opts...)
+	conn, err := grpc.Dial(serverAddress, opts...)
 	if err != nil {
 		err := fmt.Errorf("gnmi.dialout.client[%v].dial.err=%v", clientCount, err)
-		Print(err)
+		LogPrint(err)
 		return nil, err
 	}
 
 	pbclient := pb.NewGNMIDialOutClient(conn)
 	if pbclient == nil {
 		err := fmt.Errorf("gnmi.dialout.client[%v].create.err", clientCount)
-		Print(err)
+		LogPrint(err)
 		return nil, err
 	}
 
@@ -130,11 +132,12 @@ func NewGNMIDialOutClient(serverAddr string, tls bool, caFilePath string) (*GNMI
 		Clientid:          clientCount,
 	}
 
-	// [FIXME] need to update context control
-	stream, err := client.Publish(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	client.ctxCancel = cancel
+	stream, err := client.Publish(ctx)
 	if err != nil {
-		err := fmt.Errorf("gnmi.dialout.%v.publish.err", client)
-		Print(err)
+		err := fmt.Errorf("gnmi.dialout.%v.stream.err=%v", client, err)
+		LogPrint(err)
 		return nil, err
 	}
 	client.GNMIDialOut_PublishClient = stream
@@ -146,6 +149,63 @@ func NewGNMIDialOutClient(serverAddr string, tls bool, caFilePath string) (*GNMI
 	// Send publish messages to server
 	client.waitgroup.Add(1)
 	go send(client)
-	Printf("gnmi.dialout.%v.created", client)
+	LogPrintf("gnmi.dialout.%v.created", client)
 	return client, nil
+}
+
+// ClientCredentials generates gRPC DialOptions for existing credentials.
+func ClientCredentials(serverName string, cafile, certfile, keyfile string, skipVerifyTLS, insecure bool) ([]grpc.DialOption, error) {
+	var opts []grpc.DialOption
+	if insecure {
+		opts = append(opts, grpc.WithInsecure())
+	} else {
+		tlsConfig := &tls.Config{}
+		if skipVerifyTLS {
+			tlsConfig.InsecureSkipVerify = true
+		} else {
+			certPool, err := LoadCA(cafile)
+			if err != nil {
+				return nil, fmt.Errorf("ca loading failed: %v", err)
+			}
+			certificates, err := LoadCertificates(certfile, keyfile)
+			if err != nil {
+				return nil, fmt.Errorf("client certificates loading failed: %v", err)
+			}
+			tlsConfig.ServerName = serverName
+			tlsConfig.Certificates = certificates
+			tlsConfig.RootCAs = certPool
+		}
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+		// grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
+	}
+
+	return opts, nil
+}
+
+type userCredentials struct {
+	username string
+	password string
+}
+
+func (uc *userCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{
+		"username": uc.username,
+		"password": uc.password,
+	}, nil
+}
+
+func (uc *userCredentials) RequireTransportSecurity() bool {
+	return true
+}
+
+// UserCredentials generates gRPC DialOptions for user authentication.
+func UserCredentials(username, password string) []grpc.DialOption {
+	if username != "" {
+		uc := &userCredentials{
+			username: username,
+			password: password,
+		}
+		return []grpc.DialOption{grpc.WithPerRPCCredentials(uc)}
+	}
+	return nil
 }
