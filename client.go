@@ -3,6 +3,7 @@ package dialout
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"strconv"
@@ -93,13 +94,13 @@ func send(client *GNMIDialOutClient) {
 	}
 }
 
-// serverName is used to verify the hostname on the returned certificates unless skipverify is given.
+// serverName is used to verify the hostname of the server certificate unless skipverify is given.
 // The serverName is also included in the client's handshake to support virtual hosting unless it is an IP address.
-func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipverify bool, cafile string,
-	clientCert string, clientKey string, username string, password string) (*GNMIDialOutClient, error) {
+func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipverify bool, caCrt string,
+	clientCert string, clientKey string, username string, password string, loadCertFromFiles bool) (*GNMIDialOutClient, error) {
 	clientCount++
 
-	opts, err := ClientCredentials(serverName, cafile, clientCert, clientKey, skipverify, insecure)
+	opts, err := ClientCredentials(serverName, caCrt, clientCert, clientKey, skipverify, insecure, loadCertFromFiles)
 	if err != nil {
 		err := fmt.Errorf("gnmi.dialout.client[%v].credential.err=%v", clientCount, err)
 		LogPrint(err)
@@ -154,7 +155,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 }
 
 // ClientCredentials generates gRPC DialOptions for existing credentials.
-func ClientCredentials(serverName string, cafile, certfile, keyfile string, skipVerifyTLS, insecure bool) ([]grpc.DialOption, error) {
+func ClientCredentials(serverName string, ca, clientCrt, clientKey string, skipVerifyTLS, insecure, isfile bool) ([]grpc.DialOption, error) {
 	var opts []grpc.DialOption
 	if insecure {
 		opts = append(opts, grpc.WithInsecure())
@@ -163,11 +164,22 @@ func ClientCredentials(serverName string, cafile, certfile, keyfile string, skip
 		if skipVerifyTLS {
 			tlsConfig.InsecureSkipVerify = true
 		} else {
-			certPool, err := LoadCA(cafile)
+			var err error
+			var certPool *x509.CertPool
+			if isfile {
+				certPool, err = LoadCAFromFile(ca)
+			} else {
+				certPool, err = LoadCA([]byte(ca))
+			}
 			if err != nil {
 				return nil, fmt.Errorf("ca loading failed: %v", err)
 			}
-			certificates, err := LoadCertificates(certfile, keyfile)
+			var certificates []tls.Certificate
+			if isfile {
+				certificates, err = LoadCertificatesFromFile(clientCrt, clientKey)
+			} else {
+				certificates, err = LoadCertificates([]byte(clientCrt), []byte(clientKey))
+			}
 			if err != nil {
 				return nil, fmt.Errorf("client certificates loading failed: %v", err)
 			}

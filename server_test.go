@@ -121,7 +121,7 @@ func TestTLS(t *testing.T) {
 			client, err := NewGNMIDialOutClient(
 				tt.client.serverName, address, tt.client.insecure, tt.client.skipverify,
 				tt.client.cafile, tt.client.clientCert, tt.client.clientKey,
-				tt.client.username, tt.client.password)
+				tt.client.username, tt.client.password, true)
 			if err != nil {
 				t.Error(err)
 				return
@@ -165,7 +165,7 @@ func TestGNMIDialOut(t *testing.T) {
 		time.Sleep(time.Millisecond * 10)
 	}()
 	go server.Serve()
-	client, err := NewGNMIDialOutClient("", address, insecure, false, "", "", "", "", "")
+	client, err := NewGNMIDialOutClient("", address, insecure, false, "", "", "", "", "", true)
 	if err != nil {
 		t.Error(err)
 		return
