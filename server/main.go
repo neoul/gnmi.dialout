@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	address    = flag.String("address", "", "ip:port address wait for gnmi dialout client")
+	address    = flag.String("address", ":57401", "ip:port address wait for gnmi dialout client")
 	ca         = flag.String("ca-crt", "", "ca certificate file")
 	crt        = flag.String("server-crt", "", "server certificate file")
 	key        = flag.String("server-key", "", "server private key file")

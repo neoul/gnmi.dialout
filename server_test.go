@@ -130,7 +130,7 @@ func TestTLS(t *testing.T) {
 				client.Close()
 				time.Sleep(time.Millisecond * 10)
 			}()
-			if err := client.SendMessage(
+			if err := client.Send(
 				[]*gnmi.SubscribeResponse{
 					&gnmi.SubscribeResponse{
 						Response: &gnmi.SubscribeResponse_SyncResponse{
@@ -174,7 +174,7 @@ func TestGNMIDialOut(t *testing.T) {
 		client.Close()
 		time.Sleep(time.Millisecond * 10)
 	}()
-	if err := client.SendMessage(
+	if err := client.Send(
 		[]*gnmi.SubscribeResponse{
 			&gnmi.SubscribeResponse{
 				Response: &gnmi.SubscribeResponse_SyncResponse{

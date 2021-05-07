@@ -72,6 +72,7 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	stopSignal := make(chan bool)
 	s.stream[sessionid] = stream
 	s.stopSignal[sessionid] = stopSignal
+	LogPrintf("gnmi.dialout.server.session[%d].started", sessionid)
 	defer func() {
 		close(stopSignal)
 		delete(s.stream, sessionid)
