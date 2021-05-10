@@ -40,16 +40,21 @@ func (client *GNMIDialOutClient) Close() {
 	if client == nil {
 		return
 	}
-	client.cancel()
-	close(client.respchan)
-	client.respchan = nil
-	client.conn.Close()
-	client.conn = nil
-	client.waitgroup.Wait()
-	client.waitgroup = nil
-	if client.stream != nil {
-		client.stream.CloseSend()
-		client.stream = nil
+	if client.respchan != nil {
+		close(client.respchan)
+		client.respchan = nil
+	}
+	if client.waitgroup != nil {
+		client.waitgroup.Wait()
+		client.waitgroup = nil
+	}
+	if client.StopSingal != nil {
+		close(client.StopSingal)
+		client.StopSingal = nil
+	}
+	if client.conn != nil {
+		client.conn.Close()
+		client.conn = nil
 	}
 	LogPrintf("gnmi.dialout.%v.closed", client)
 }
@@ -101,6 +106,12 @@ func send(client *GNMIDialOutClient) {
 	for {
 		subscribeResponse, ok := <-client.respchan
 		if !ok {
+			if client.stream != nil {
+				client.stream.CloseSend()
+				client.stream = nil
+				LogPrintf("gnmi.dialout.%v.send.closed", client)
+			}
+			client.cancel()
 			LogPrintf("gnmi.dialout.%v.send.shutdown", client)
 			return
 		}
@@ -109,12 +120,18 @@ func send(client *GNMIDialOutClient) {
 			err = client.stream.Send(subscribeResponse)
 		}
 		if err == io.EOF {
+			if client.stream != nil {
+				client.stream.CloseSend()
+				client.cancel()
+				client.stream = nil
+				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
+			}
 			client.ctx, client.cancel = context.WithCancel(context.Background())
 			stream, err := client.Publish(client.ctx)
 			client.stream = stream
 			client.Error = err
 			if err == nil {
-				LogPrintf("gnmi.dialout.%v.send.started", client)
+				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
 				client.waitgroup.Add(1)
 				go recv(client)
 			}
@@ -159,7 +176,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 	client := &GNMIDialOutClient{
 		GNMIDialOutClient: pbclient,
 		conn:              conn,
-		respchan:          make(chan *gnmi.SubscribeResponse, 256),
+		respchan:          make(chan *gnmi.SubscribeResponse, 32),
 		waitgroup:         new(sync.WaitGroup),
 		Clientid:          clientCount,
 	}
