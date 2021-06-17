@@ -142,7 +142,7 @@ func TestTLS(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			time.Sleep(time.Millisecond * 10)
+			time.Sleep(time.Millisecond * 50)
 		})
 	}
 }
@@ -243,7 +243,7 @@ func TestGNMIDialOut(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	time.Sleep(time.Millisecond * 10)
+	time.Sleep(time.Millisecond * 50)
 }
 
 func TestGNMIDialOutErr(t *testing.T) {
@@ -264,7 +264,7 @@ func TestGNMIDialOutErr(t *testing.T) {
 	// 	time.Sleep(time.Millisecond * 10)
 	// }()
 	go server.Serve()
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 1)
 
 	client, err := NewGNMIDialOutClient("", address, insecure, false, "", "", "", "", "", true)
 	if err != nil {
@@ -276,10 +276,10 @@ func TestGNMIDialOutErr(t *testing.T) {
 		time.Sleep(time.Millisecond * 10)
 	}()
 
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 1)
 	server.Close()
 	server = nil
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 1)
 
 	server, err = NewGNMIDialoutServer(address, insecure, false, "", "", "", "", "")
 	if err != nil {
@@ -291,7 +291,7 @@ func TestGNMIDialOutErr(t *testing.T) {
 		time.Sleep(time.Millisecond * 10)
 	}()
 	go server.Serve()
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 1)
 
 	if err := client.Send(
 		[]*gnmi.SubscribeResponse{
@@ -362,5 +362,5 @@ func TestGNMIDialOutErr(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 1)
 }
