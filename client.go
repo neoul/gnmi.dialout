@@ -178,6 +178,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 		LogPrint(err)
 		return nil, err
 	}
+	// fmt.Println(conn.Target(), conn.GetState())
 
 	pbclient := pb.NewGNMIDialOutClient(conn)
 	if pbclient == nil {

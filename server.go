@@ -1,17 +1,23 @@
 package dialout
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
+	"strings"
 	"sync"
 
 	pb "github.com/neoul/gnmi.dialout/proto/dialout"
+	"github.com/neoul/open-gnmi/utilities/status"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 )
 
 var sessionCount int
@@ -64,7 +70,37 @@ func (server *GNMIDialoutServer) RestartSession(sessionid int) {
 	}
 }
 
+func GetMetadata(ctx context.Context) (map[string]string, bool) {
+	m := map[string]string{}
+	headers, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return m, false
+	}
+	for k, v := range headers {
+		k := strings.Trim(k, ":")
+		m[k] = v[0]
+	}
+	p, ok := peer.FromContext(ctx)
+	if ok {
+		m["protocol"] = p.Addr.Network()
+		m["peer"] = p.Addr.String()
+		index := strings.LastIndex(p.Addr.String(), ":")
+		m["peer-address"] = p.Addr.String()[:index]
+		m["peer-port"] = p.Addr.String()[index+1:]
+	}
+	// fmt.Println("metadata", m)
+	return m, true
+}
+
 func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
+	meta, ok := GetMetadata(stream.Context())
+	if !ok {
+		return status.Errorf(codes.InvalidArgument, "no metadata")
+	}
+	username := meta["username"]
+	password := meta["password"]
+	peer := meta["peer"]
+
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	sessionCount++
@@ -72,7 +108,7 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	stopSignal := make(chan bool)
 	s.stream[sessionid] = stream
 	s.stopSignal[sessionid] = stopSignal
-	LogPrintf("gnmi.dialout.server.session[%d].started", sessionid)
+	LogPrintf("gnmi.dialout.server.session[%d].started addr=%s,username=%s,password=%s", sessionid, peer, username, password)
 	defer func() {
 		close(stopSignal)
 		delete(s.stream, sessionid)
@@ -114,7 +150,7 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 // NewGNMIDialoutServer creates new gnmi dialout server
 func NewGNMIDialoutServer(address string, insecure bool, skipverify bool, cafile string,
 	serverCert string, serverKey string, username string, password string) (*GNMIDialoutServer, error) {
-
+	LogPrintf("gnmi.dialout.server.started")
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		err := fmt.Errorf("gnmi.dialout.server.listen.err=%s", err)
