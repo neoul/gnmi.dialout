@@ -72,7 +72,7 @@ func (server *GNMIDialoutServer) RestartSession(sessionid int) {
 	}
 }
 
-func (server *GNMIDialoutServer) IntervalSession(sessionid int, interval int64) {
+func (server *GNMIDialoutServer) IntervalPauseSession(sessionid int, interval int64) {
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
 		if interval > 0 {
@@ -88,7 +88,7 @@ func (server *GNMIDialoutServer) CloseSession(sessionid int) {
 	}
 }
 
-func (server *GNMIDialoutServer) GetSession(data []string) []string {
+func (server *GNMIDialoutServer) GetSessionInfo(data []string) []string {
 	for i := 1; i < sessionCount+1; i++ {
 		if server.stream[i] == nil {
 			break
@@ -126,8 +126,7 @@ func GetMetadata(ctx context.Context) (map[string]string, bool) {
 }
 
 // Close session
-func sclose(server *GNMIDialoutServer, sessionid int) {
-	server.waitgroup[sessionid].Wait()
+func sessionClose(server *GNMIDialoutServer, sessionid int) {
 	close(server.stopSignal[sessionid])
 	close(server.closeSignal[sessionid])
 	delete(server.stream, sessionid)
@@ -138,7 +137,7 @@ func sclose(server *GNMIDialoutServer, sessionid int) {
 }
 
 // Receive session
-func srecv(server *GNMIDialoutServer, sessionid int) {
+func sessionRecv(server *GNMIDialoutServer, sessionid int) {
 	defer server.waitgroup[sessionid].Done()
 	if _, ok := server.stream[sessionid]; !ok {
 		LogPrintf("gnmi.dialout.server.session[%d].recv.close", sessionid)
@@ -161,7 +160,7 @@ func srecv(server *GNMIDialoutServer, sessionid int) {
 }
 
 // Send session
-func ssend(server *GNMIDialoutServer, sessionid int) {
+func sessionSend(server *GNMIDialoutServer, sessionid int) {
 	defer server.waitgroup[sessionid].Done()
 	if _, ok := server.stream[sessionid]; !ok {
 		LogPrintf("gnmi.dialout.server.session[%d].close", sessionid)
@@ -214,15 +213,17 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	LogPrintf("gnmi.dialout.server.session[%d].started addr=%s,username=%s,password=%s", sessionid, peer, username, password)
 
 	// Close publish session
-	defer sclose(s, sessionid)
+	defer sessionClose(s, sessionid)
 
 	// Receive publish message from client
 	s.waitgroup[sessionid].Add(1)
-	go srecv(s, sessionid)
+	go sessionRecv(s, sessionid)
 
 	// Send publish message to client for control session
 	s.waitgroup[sessionid].Add(1)
-	go ssend(s, sessionid)
+	go sessionSend(s, sessionid)
+
+	s.waitgroup[sessionid].Wait()
 
 	return nil
 }

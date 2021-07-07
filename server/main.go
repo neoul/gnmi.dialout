@@ -57,7 +57,7 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 		if strings.Compare(cmd, "show") == 0 {
 			data := []string{}
 			fmt.Println("Peer Session Infomation:")
-			for i, v := range server.GetSession(data) {
+			for i, v := range server.GetSessionInfo(data) {
 				fmt.Printf("[%d] %s\n", i, v)
 			}
 		} else if strings.Compare(cmd, "close") == 0 {
@@ -98,7 +98,7 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 				if err != nil {
 					continue
 				}
-				server.IntervalSession(sesi, interval*1000000000)
+				server.IntervalPauseSession(sesi, interval*1000000000)
 			}
 		}
 	}
