@@ -88,6 +88,21 @@ func (server *GNMIDialoutServer) CloseSession(sessionid int) {
 	}
 }
 
+func (server *GNMIDialoutServer) GetSession(data []string) []string {
+	for i := 1; i < sessionCount+1; i++ {
+		if server.stream[i] == nil {
+			break
+		}
+		meta, ok := GetMetadata(server.stream[i].Context())
+		if !ok {
+			continue
+		}
+		peer := fmt.Sprintf("%s:session=%d", meta["peer"], i)
+		data = append(data, peer)
+	}
+	return data
+}
+
 func GetMetadata(ctx context.Context) (map[string]string, bool) {
 	m := map[string]string{}
 	headers, ok := metadata.FromIncomingContext(ctx)

@@ -46,30 +46,59 @@ func main() {
 
 func runCmd(server *dialout.GNMIDialoutServer) {
 	time.Sleep(20 * time.Second)
-
 	for {
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Enter command[0:stop, 1~60:interval, -1:restart, -2:close]:")
+		fmt.Print("Enter command [show|control|close]:")
 		cmd, err := reader.ReadString('\n')
 		if err != nil {
 			return
 		}
 		cmd = strings.TrimSpace(cmd)
-		icmd, err := strconv.ParseInt(cmd, 10, 64)
-		if err != nil {
-			return
-		}
-
-		if icmd == 0 {
-			server.PauseSession(1)
-		} else if icmd == -1 {
-			server.RestartSession(1)
-		} else if icmd == -2 {
-			server.CloseSession(1)
+		if strings.Compare(cmd, "show") == 0 {
+			data := []string{}
+			fmt.Println("Peer Session Infomation:")
+			for i, v := range server.GetSession(data) {
+				fmt.Printf("[%d] %s\n", i, v)
+			}
+		} else if strings.Compare(cmd, "close") == 0 {
+			server.Close()
 			return
 		} else {
-			if icmd >= 1 && icmd <= 60 {
-				server.IntervalSession(1, icmd)
+			fmt.Print("Enter session num:")
+			ses, err := reader.ReadString('\n')
+			if err != nil {
+				continue
+			}
+			ses = strings.TrimSpace(ses)
+			sesi, err := strconv.Atoi(ses)
+			if err != nil {
+				continue
+			}
+			if sesi < 0 {
+				continue
+			}
+
+			fmt.Print("Enter session command [stop|restart|close|<1-60>sec]:")
+			ccmd, err := reader.ReadString('\n')
+			if err != nil {
+				continue
+			}
+			ccmd = strings.TrimSpace(ccmd)
+			if strings.Compare(ccmd, "stop") == 0 {
+				server.PauseSession(sesi)
+			} else if strings.Compare(ccmd, "restart") == 0 {
+				server.RestartSession(sesi)
+			} else if strings.Compare(ccmd, "close") == 0 {
+				server.CloseSession(sesi)
+				fmt.Println("Close server session")
+				continue
+			} else {
+				//convert string to int64
+				interval, err := strconv.ParseInt(ccmd, 10, 64)
+				if err != nil {
+					continue
+				}
+				server.IntervalSession(sesi, interval*1000000000)
 			}
 		}
 	}
