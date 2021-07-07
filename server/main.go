@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	dialout "gnmi.dialout"
+	dialout "github.com/neoul/gnmi.dialout"
 )
 
 var (
