@@ -27,8 +27,10 @@ type GNMIDialoutServer struct {
 	GRPCServer *grpc.Server
 	Listener   net.Listener
 
-	stream     map[int]pb.GNMIDialOut_PublishServer
-	stopSignal map[int]chan bool
+	stream      map[int]pb.GNMIDialOut_PublishServer
+	waitgroup   map[int]*sync.WaitGroup
+	stopSignal  map[int]chan int64
+	closeSignal map[int]chan bool
 }
 
 func (server *GNMIDialoutServer) Close() error {
@@ -59,14 +61,30 @@ func (server *GNMIDialoutServer) Serve() error {
 func (server *GNMIDialoutServer) PauseSession(sessionid int) {
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
-		ss <- true
+		ss <- 0
 	}
 }
 
 func (server *GNMIDialoutServer) RestartSession(sessionid int) {
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
-		ss <- false
+		ss <- -1
+	}
+}
+
+func (server *GNMIDialoutServer) IntervalSession(sessionid int, interval int64) {
+	ss, ok := server.stopSignal[sessionid]
+	if ok {
+		if interval > 0 {
+			ss <- interval
+		}
+	}
+}
+
+func (server *GNMIDialoutServer) CloseSession(sessionid int) {
+	cs, ok := server.closeSignal[sessionid]
+	if ok {
+		cs <- true
 	}
 }
 
@@ -92,6 +110,74 @@ func GetMetadata(ctx context.Context) (map[string]string, bool) {
 	return m, true
 }
 
+// Close session
+func sclose(server *GNMIDialoutServer, sessionid int) {
+	server.waitgroup[sessionid].Wait()
+	close(server.stopSignal[sessionid])
+	close(server.closeSignal[sessionid])
+	delete(server.stream, sessionid)
+	delete(server.waitgroup, sessionid)
+	delete(server.stopSignal, sessionid)
+	delete(server.closeSignal, sessionid)
+	LogPrintf("gnmi.dialout.server.session[%d].close.complete", sessionid)
+}
+
+// Receive session
+func srecv(server *GNMIDialoutServer, sessionid int) {
+	defer server.waitgroup[sessionid].Done()
+	if _, ok := server.stream[sessionid]; !ok {
+		LogPrintf("gnmi.dialout.server.session[%d].recv.close", sessionid)
+		return
+	}
+	for {
+		select {
+		case <-server.closeSignal[sessionid]:
+			LogPrintf("gnmi.dialout.server.session[%d].recv.close", sessionid)
+			return
+		default:
+			response, err := server.stream[sessionid].Recv()
+			if err != nil {
+				LogPrintf("gnmi.dialout.server.session[%d].recv.err=%v", sessionid, err)
+				return
+			}
+			LogPrintf("gnmi.dialout.server.session[%d].recv.msg=%s", sessionid, response)
+		}
+	}
+}
+
+// Send session
+func ssend(server *GNMIDialoutServer, sessionid int) {
+	defer server.waitgroup[sessionid].Done()
+	if _, ok := server.stream[sessionid]; !ok {
+		LogPrintf("gnmi.dialout.server.session[%d].close", sessionid)
+		return
+	}
+	for {
+		select {
+		case <-server.closeSignal[sessionid]:
+			LogPrintf("gnmi.dialout.server.session[%d].close", sessionid)
+			return
+		case stop := <-server.stopSignal[sessionid]:
+			request := buildPublishResponse(stop)
+			if request == nil {
+				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.error=%s", sessionid, "not support range")
+				return
+			}
+			if err := server.stream[sessionid].Send(request); err != nil {
+				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.error=%s", sessionid, err)
+				return
+			}
+			if stop == 0 {
+				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.stop", sessionid)
+			} else if stop == -1 {
+				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.restart", sessionid)
+			} else if stop > 0 {
+				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.stop-interval=%v", sessionid, stop)
+			}
+		}
+	}
+}
+
 func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	meta, ok := GetMetadata(stream.Context())
 	if !ok {
@@ -102,49 +188,28 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	peer := meta["peer"]
 
 	wg := new(sync.WaitGroup)
-	wg.Add(1)
 	sessionCount++
 	sessionid := sessionCount
-	stopSignal := make(chan bool)
+	stopSignal := make(chan int64)
+	closeSignal := make(chan bool)
 	s.stream[sessionid] = stream
+	s.waitgroup[sessionid] = wg
 	s.stopSignal[sessionid] = stopSignal
+	s.closeSignal[sessionid] = closeSignal
 	LogPrintf("gnmi.dialout.server.session[%d].started addr=%s,username=%s,password=%s", sessionid, peer, username, password)
-	defer func() {
-		close(stopSignal)
-		delete(s.stream, sessionid)
-		delete(s.stopSignal, sessionid)
-		LogPrintf("gnmi.dialout.server.session[%d].close.complete", sessionid)
-		wg.Wait()
-	}()
 
-	go func() {
-		defer wg.Done()
-		for {
-			stop, ok := <-stopSignal
-			if !ok {
-				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.closed", sessionid)
-				return
-			}
-			request := buildPublishResponse(stop)
-			if err := stream.Send(request); err != nil {
-				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.error=%s", sessionid, err)
-				return
-			}
-			if stop {
-				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.stop", sessionid)
-			} else {
-				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.restart", sessionid)
-			}
-		}
-	}()
+	// Close publish session
+	defer sclose(s, sessionid)
 
-	for {
-		response, err := stream.Recv()
-		if err != nil {
-			return err
-		}
-		LogPrintf("gnmi.dialout.server.recv.msg=%s", response)
-	}
+	// Receive publish message from client
+	s.waitgroup[sessionid].Add(1)
+	go srecv(s, sessionid)
+
+	// Send publish message to client for control session
+	s.waitgroup[sessionid].Add(1)
+	go ssend(s, sessionid)
+
+	return nil
 }
 
 // NewGNMIDialoutServer creates new gnmi dialout server
@@ -166,28 +231,38 @@ func NewGNMIDialoutServer(address string, insecure bool, skipverify bool, cafile
 	}
 
 	dialoutServer := &GNMIDialoutServer{
-		GRPCServer: grpc.NewServer(opts...),
-		Listener:   listener,
-		stream:     make(map[int]pb.GNMIDialOut_PublishServer),
-		stopSignal: make(map[int]chan bool),
+		GRPCServer:  grpc.NewServer(opts...),
+		Listener:    listener,
+		stream:      make(map[int]pb.GNMIDialOut_PublishServer),
+		waitgroup:   make(map[int]*sync.WaitGroup),
+		stopSignal:  make(map[int]chan int64),
+		closeSignal: make(map[int]chan bool),
 	}
 	pb.RegisterGNMIDialOutServer(dialoutServer.GRPCServer, dialoutServer)
 	return dialoutServer, nil
 }
 
-func buildPublishResponse(stop bool) *pb.PublishResponse {
-	if stop {
+func buildPublishResponse(stop int64) *pb.PublishResponse {
+	if stop == 0 {
 		return &pb.PublishResponse{
 			Request: &pb.PublishResponse_Stop{
 				Stop: true,
 			},
 		}
+	} else if stop == -1 {
+		return &pb.PublishResponse{
+			Request: &pb.PublishResponse_Restart{
+				Restart: true,
+			},
+		}
+	} else if stop > 0 {
+		return &pb.PublishResponse{
+			Request: &pb.PublishResponse_StopInterval{
+				StopInterval: stop,
+			},
+		}
 	}
-	return &pb.PublishResponse{
-		Request: &pb.PublishResponse_Restart{
-			Restart: true,
-		},
-	}
+	return nil
 }
 
 // LoadCA loads Root CA from file.
