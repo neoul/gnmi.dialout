@@ -21,7 +21,7 @@ var clientCount int
 type GNMIDialOutClient struct {
 	Clientid int
 	pb.GNMIDialOutClient
-	StopSingal chan time.Duration // -1: start, 0: stop, 0>: stop interval
+	StopSingal time.Duration // -1: start, 0: stop, 0>: stop interval
 	Error      error
 
 	stream    pb.GNMIDialOut_PublishClient
@@ -48,10 +48,6 @@ func (client *GNMIDialOutClient) Close() {
 		client.waitgroup.Wait()
 		client.waitgroup = nil
 	}
-	if client.StopSingal != nil {
-		close(client.StopSingal)
-		client.StopSingal = nil
-	}
 	if client.conn != nil {
 		client.conn.Close()
 		client.conn = nil
@@ -76,6 +72,26 @@ func (client *GNMIDialOutClient) Channel() chan *gnmi.SubscribeResponse {
 	return client.respchan
 }
 
+func currentTime() time.Duration {
+	return time.Duration(time.Now().UnixNano())
+}
+
+func compareTime(client *GNMIDialOutClient) bool {
+	if client.StopSingal == 0 {
+		return true
+	} else if client.StopSingal == -1 {
+		return false
+	} else if client.StopSingal > 0 {
+		if currentTime() > client.StopSingal {
+			return false
+		} else {
+			return true
+		}
+	}
+
+	return false
+}
+
 func recv(client *GNMIDialOutClient) {
 	defer client.waitgroup.Done()
 	for {
@@ -91,11 +107,11 @@ func recv(client *GNMIDialOutClient) {
 		}
 		switch msg := publishResponse.GetRequest().(type) {
 		case *pb.PublishResponse_Stop:
-			client.StopSingal <- 0
+			client.StopSingal = 0
 		case *pb.PublishResponse_Restart:
-			client.StopSingal <- -1
+			client.StopSingal = -1
 		case *pb.PublishResponse_StopInterval:
-			client.StopSingal <- time.Duration(msg.StopInterval)
+			client.StopSingal = time.Duration(msg.StopInterval) + currentTime()
 		}
 	}
 }
@@ -116,6 +132,10 @@ func send(client *GNMIDialOutClient) {
 			}
 			LogPrintf("gnmi.dialout.%v.send.shutdown", client)
 			return
+		}
+		if compareTime(client) {
+			LogPrintf("gnmi.dialout.%v.send.stop=%v", client, client.StopSingal)
+			continue
 		}
 		client.Error = io.EOF
 		if client.stream != nil {
@@ -189,6 +209,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 
 	client := &GNMIDialOutClient{
 		GNMIDialOutClient: pbclient,
+		StopSingal:        time.Duration(-2),
 		conn:              conn,
 		respchan:          make(chan *gnmi.SubscribeResponse, 32),
 		waitgroup:         new(sync.WaitGroup),
