@@ -58,7 +58,7 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 			data := []string{}
 			fmt.Println("Peer Session Infomation:")
 			for i, v := range server.GetSessionInfo(data) {
-				fmt.Printf("[%d] %s\n", i, v)
+				fmt.Printf("[%d] %s\n", i+1, v)
 			}
 		} else if strings.Compare(cmd, "close") == 0 {
 			server.Close()
@@ -78,7 +78,7 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 				continue
 			}
 
-			fmt.Print("Enter session command [stop|restart|close|<1-60>sec]:")
+			fmt.Print("Enter session command [stop|restart|<1-60>sec]:")
 			ccmd, err := reader.ReadString('\n')
 			if err != nil {
 				continue
@@ -88,10 +88,6 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 				server.PauseSession(sesi)
 			} else if strings.Compare(ccmd, "restart") == 0 {
 				server.RestartSession(sesi)
-			} else if strings.Compare(ccmd, "close") == 0 {
-				server.CloseSession(sesi)
-				fmt.Println("Close server session")
-				continue
 			} else {
 				//convert string to int64
 				interval, err := strconv.ParseInt(ccmd, 10, 64)
