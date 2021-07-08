@@ -75,7 +75,7 @@ func (server *GNMIDialoutServer) IntervalPauseSession(sessionid int, interval in
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
 		if interval > 0 {
-			ss <- interval
+			ss <- interval * 1000000000
 		}
 	}
 }
@@ -89,7 +89,7 @@ func (server *GNMIDialoutServer) GetSessionInfo(data []string) []string {
 		if !ok {
 			continue
 		}
-		peer := fmt.Sprintf("%s:session=%d", meta["peer"], i)
+		peer := fmt.Sprintf("%s [session=%d]", meta["peer"], i)
 		data = append(data, peer)
 	}
 	return data

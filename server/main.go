@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	dialout "github.com/neoul/gnmi.dialout"
 )
@@ -45,56 +44,82 @@ func main() {
 }
 
 func runCmd(server *dialout.GNMIDialoutServer) {
-	time.Sleep(20 * time.Second)
+	var sessionId int
+	var interval int64
+	var stopState map[int]bool = make(map[int]bool)
+
+	fmt.Println("********************************************************")
+	fmt.Println("[Command]")
+	fmt.Println("Stop         : put the 'enter' key")
+	fmt.Println("Restart      : put the 'enter' key again during 'stop'")
+	fmt.Println("Interval Stop: put the 'enter' key with number")
+	fmt.Println("Show         : put the 'show' command")
+	fmt.Println("Close        : put the 'close' command")
+	fmt.Println("********************************************************")
+	fmt.Println("[Example]")
+	fmt.Println("1.Stop session 1")
+	fmt.Println("$ 1 (enter)")
+	fmt.Println("2.Restart session 1")
+	fmt.Println("$ 1 (enter)")
+	fmt.Println("3.Stop session 1 for 10sec")
+	fmt.Println("$ 1 10 (enter)")
+	fmt.Println("4.Show peer session list")
+	fmt.Println("$ show (enter)")
+	fmt.Println("5.Close server")
+	fmt.Println("$ close (enter)")
+	fmt.Println("********************************************************")
 	for {
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Enter command [show|control|close]:")
+		fmt.Print("Enter:")
 		cmd, err := reader.ReadString('\n')
 		if err != nil {
+			server.Close()
 			return
 		}
 		cmd = strings.TrimSpace(cmd)
-		if strings.Compare(cmd, "show") == 0 {
-			data := []string{}
-			fmt.Println("Peer Session Infomation:")
-			for i, v := range server.GetSessionInfo(data) {
-				fmt.Printf("[%d] %s\n", i+1, v)
-			}
-		} else if strings.Compare(cmd, "close") == 0 {
+		if strings.Compare(cmd, "close") == 0 {
 			server.Close()
+			stopState = make(map[int]bool)
 			return
+		} else if strings.Compare(cmd, "show") == 0 {
+			data := []string{}
+			for i, v := range server.GetSessionInfo(data) {
+				fmt.Printf("[%d] %s [stop=%v]\n", i+1, v, stopState[sessionId])
+			}
+			continue
+		}
+
+		args := strings.Split(cmd, " ")
+		sessionId, err = strconv.Atoi(args[0])
+		if err != nil {
+			fmt.Println("%% Please enter session id")
+			continue
+		}
+		if len(args) > 1 {
+			//interval stop
+			interval, err = strconv.ParseInt(args[1], 10, 64)
+			if err != nil {
+				fmt.Println("%% Please enter interval time")
+				continue
+			}
+			server.IntervalPauseSession(sessionId, interval)
 		} else {
-			fmt.Print("Enter session num:")
-			ses, err := reader.ReadString('\n')
-			if err != nil {
-				continue
-			}
-			ses = strings.TrimSpace(ses)
-			sesi, err := strconv.Atoi(ses)
-			if err != nil {
-				continue
-			}
-			if sesi < 0 {
+			//stop & restart
+			if _, ok := stopState[sessionId]; !ok {
+				//new one
+				server.PauseSession(sessionId)
+				stopState[sessionId] = true
 				continue
 			}
 
-			fmt.Print("Enter session command [stop|restart|<1-60>sec]:")
-			ccmd, err := reader.ReadString('\n')
-			if err != nil {
-				continue
-			}
-			ccmd = strings.TrimSpace(ccmd)
-			if strings.Compare(ccmd, "stop") == 0 {
-				server.PauseSession(sesi)
-			} else if strings.Compare(ccmd, "restart") == 0 {
-				server.RestartSession(sesi)
+			if stopState[sessionId] {
+				//current is 'stop'
+				server.RestartSession(sessionId)
+				stopState[sessionId] = false
 			} else {
-				//convert string to int64
-				interval, err := strconv.ParseInt(ccmd, 10, 64)
-				if err != nil {
-					continue
-				}
-				server.IntervalPauseSession(sesi, interval*1000000000)
+				//current is 'run'
+				server.PauseSession(sessionId)
+				stopState[sessionId] = true
 			}
 		}
 	}
