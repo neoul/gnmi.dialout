@@ -60,27 +60,38 @@ func (server *GNMIDialoutServer) Serve() error {
 	return nil
 }
 
-func (server *GNMIDialoutServer) PauseSession(sessionid int) {
+func (server *GNMIDialoutServer) PauseSession(sessionid int) error {
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
 		ss <- 0
+	} else {
+		return fmt.Errorf("gnmi.dialout.server.pause.err=fail to open stop-signal")
 	}
+	return nil
 }
 
-func (server *GNMIDialoutServer) RestartSession(sessionid int) {
+func (server *GNMIDialoutServer) RestartSession(sessionid int) error {
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
 		ss <- -1
+	} else {
+		return fmt.Errorf("gnmi.dialout.server.restart.err=fail to open stop-signal")
 	}
+	return nil
 }
 
-func (server *GNMIDialoutServer) IntervalPauseSession(sessionid int, interval int64) {
+func (server *GNMIDialoutServer) IntervalPauseSession(sessionid int, interval int64) error {
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
 		if interval > 0 {
 			ss <- interval
+		} else {
+			return fmt.Errorf("gnmi.dialout.server.restart.err=interval's less than or equal to 0")
 		}
+	} else {
+		return fmt.Errorf("gnmi.dialout.server.intervalpause.err=fail to open stop-signal")
 	}
+	return nil
 }
 
 func (server *GNMIDialoutServer) GetSessionInfo() map[int]string {
