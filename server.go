@@ -31,7 +31,7 @@ type GNMIDialoutServer struct {
 	stream     map[int]pb.GNMIDialOut_PublishServer
 	waitgroup  map[int]*sync.WaitGroup
 	stopSignal map[int]chan int64
-	resSignal  map[int]chan *gnmi.SubscribeResponse
+	respSignal map[int]chan *gnmi.SubscribeResponse
 	quitSignal map[int]chan struct{}
 }
 
@@ -89,7 +89,7 @@ func (server *GNMIDialoutServer) GetSessionInfo() map[int]string {
 		if server.stream[i] == nil {
 			continue
 		}
-		meta, ok := GetMetadata(server.stream[i].Context())
+		meta, ok := getMetadata(server.stream[i].Context())
 		if !ok {
 			continue
 		}
@@ -99,13 +99,13 @@ func (server *GNMIDialoutServer) GetSessionInfo() map[int]string {
 }
 
 func (server *GNMIDialoutServer) Receive(sessionid int) (*gnmi.SubscribeResponse, error) {
-	if server == nil || server.resSignal[sessionid] == nil {
+	if server == nil || server.respSignal[sessionid] == nil {
 		return nil, fmt.Errorf("gnmi.dialout.server.receive.err=fail to open response channel")
 	}
-	response, ok := <-server.resSignal[sessionid]
+	response, ok := <-server.respSignal[sessionid]
 	if ok {
 		if response == nil {
-			response, ok = <-server.resSignal[sessionid]
+			response, ok = <-server.respSignal[sessionid]
 			if !ok {
 				return nil, fmt.Errorf("gnmi.dialout.server.receive.err=fail to receive response")
 			}
@@ -116,7 +116,7 @@ func (server *GNMIDialoutServer) Receive(sessionid int) (*gnmi.SubscribeResponse
 	}
 }
 
-func GetMetadata(ctx context.Context) (map[string]string, bool) {
+func getMetadata(ctx context.Context) (map[string]string, bool) {
 	m := map[string]string{}
 	headers, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -141,11 +141,11 @@ func GetMetadata(ctx context.Context) (map[string]string, bool) {
 // Close session
 func sessionClose(server *GNMIDialoutServer, sessionid int) {
 	close(server.stopSignal[sessionid])
-	close(server.resSignal[sessionid])
+	close(server.respSignal[sessionid])
 	delete(server.stream, sessionid)
 	delete(server.waitgroup, sessionid)
 	delete(server.stopSignal, sessionid)
-	delete(server.resSignal, sessionid)
+	delete(server.respSignal, sessionid)
 	delete(server.quitSignal, sessionid)
 	LogPrintf("gnmi.dialout.server.session[%d].close.complete", sessionid)
 }
@@ -164,7 +164,7 @@ func sessionRecv(server *GNMIDialoutServer, sessionid int) {
 		case <-server.quitSignal[sessionid]:
 			LogPrintf("gnmi.dialout.server.session[%d].recv.quit", sessionid)
 			return
-		case server.resSignal[sessionid] <- response:
+		case server.respSignal[sessionid] <- response:
 			response, err = server.stream[sessionid].Recv()
 			if err != nil {
 				LogPrintf("gnmi.dialout.server.session[%d].recv.err=%v", sessionid, err)
@@ -209,7 +209,7 @@ func sessionSend(server *GNMIDialoutServer, sessionid int) {
 }
 
 func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
-	meta, ok := GetMetadata(stream.Context())
+	meta, ok := getMetadata(stream.Context())
 	if !ok {
 		return status.Errorf(codes.InvalidArgument, "no metadata")
 	}
@@ -221,12 +221,12 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	sessionCount++
 	sessionid := sessionCount
 	stopSignal := make(chan int64)
-	resSignal := make(chan *gnmi.SubscribeResponse)
+	respSignal := make(chan *gnmi.SubscribeResponse)
 	quitSignal := make(chan struct{})
 	s.stream[sessionid] = stream
 	s.waitgroup[sessionid] = wg
 	s.stopSignal[sessionid] = stopSignal
-	s.resSignal[sessionid] = resSignal
+	s.respSignal[sessionid] = respSignal
 	s.quitSignal[sessionid] = quitSignal
 	LogPrintf("gnmi.dialout.server.session[%d].started addr=%s,username=%s,password=%s", sessionid, peer, username, password)
 
@@ -280,7 +280,7 @@ func NewGNMIDialoutServer(address string, insecure bool, skipverify bool, cafile
 		stream:     make(map[int]pb.GNMIDialOut_PublishServer),
 		waitgroup:  make(map[int]*sync.WaitGroup),
 		stopSignal: make(map[int]chan int64),
-		resSignal:  make(map[int]chan *gnmi.SubscribeResponse),
+		respSignal: make(map[int]chan *gnmi.SubscribeResponse),
 		quitSignal: make(map[int]chan struct{}),
 	}
 	pb.RegisterGNMIDialOutServer(dialoutServer.GRPCServer, dialoutServer)
