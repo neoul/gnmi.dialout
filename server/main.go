@@ -81,10 +81,31 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 			stopState = make(map[int]bool)
 			return
 		} else if strings.Compare(cmd, "show") == 0 {
-			data := []string{}
-			for i, v := range server.GetSessionInfo(data) {
-				fmt.Printf("[%d] %s [stop=%v]\n", i+1, v, stopState[sessionId])
+			fmt.Println("ID  IPAddress")
+			fmt.Println("-------------------------------------")
+			for i, v := range server.GetSessionInfo() {
+				fmt.Printf("%d   %s [stop=%v]\n", i, v, stopState[i])
 			}
+			continue
+		} else if strings.Contains(cmd, "receive") {
+			args := strings.Split(cmd, " ")
+			sessionId, err = strconv.Atoi(args[1])
+			if err != nil {
+				fmt.Println("%% Please enter session id")
+				continue
+			}
+			for {
+				response, err := server.Receive(sessionId)
+				if err != nil {
+					break
+				}
+				if response == nil {
+					break
+				}
+				fmt.Println("Receive:", response)
+			}
+			continue
+		} else if len(cmd) <= 0 {
 			continue
 		}
 
@@ -101,6 +122,7 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 				fmt.Println("%% Please enter interval time")
 				continue
 			}
+			interval = interval * 1000000000
 			server.IntervalPauseSession(sessionId, interval)
 		} else {
 			//stop & restart

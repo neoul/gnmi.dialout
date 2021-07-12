@@ -13,6 +13,7 @@ import (
 
 	pb "github.com/neoul/gnmi.dialout/proto/dialout"
 	"github.com/neoul/open-gnmi/utilities/status"
+	"github.com/openconfig/gnmi/proto/gnmi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -30,6 +31,8 @@ type GNMIDialoutServer struct {
 	stream     map[int]pb.GNMIDialOut_PublishServer
 	waitgroup  map[int]*sync.WaitGroup
 	stopSignal map[int]chan int64
+	resSignal  map[int]chan *gnmi.SubscribeResponse
+	quitSignal map[int]chan struct{}
 }
 
 func (server *GNMIDialoutServer) Close() error {
@@ -75,24 +78,42 @@ func (server *GNMIDialoutServer) IntervalPauseSession(sessionid int, interval in
 	ss, ok := server.stopSignal[sessionid]
 	if ok {
 		if interval > 0 {
-			ss <- interval * 1000000000
+			ss <- interval
 		}
 	}
 }
 
-func (server *GNMIDialoutServer) GetSessionInfo(data []string) []string {
+func (server *GNMIDialoutServer) GetSessionInfo() map[int]string {
+	data := map[int]string{}
 	for i := 1; i < sessionCount+1; i++ {
 		if server.stream[i] == nil {
-			break
+			continue
 		}
 		meta, ok := GetMetadata(server.stream[i].Context())
 		if !ok {
 			continue
 		}
-		peer := fmt.Sprintf("%s [session=%d]", meta["peer"], i)
-		data = append(data, peer)
+		data[i] = meta["peer"]
 	}
 	return data
+}
+
+func (server *GNMIDialoutServer) Receive(sessionid int) (*gnmi.SubscribeResponse, error) {
+	if server == nil || server.resSignal[sessionid] == nil {
+		return nil, fmt.Errorf("gnmi.dialout.server.receive.err=fail to open response channel")
+	}
+	response, ok := <-server.resSignal[sessionid]
+	if ok {
+		if response == nil {
+			response, ok = <-server.resSignal[sessionid]
+			if !ok {
+				return nil, fmt.Errorf("gnmi.dialout.server.receive.err=fail to receive response")
+			}
+		}
+		return response, nil
+	} else {
+		return nil, fmt.Errorf("gnmi.dialout.server.receive.err=fail to receive response")
+	}
 }
 
 func GetMetadata(ctx context.Context) (map[string]string, bool) {
@@ -120,26 +141,37 @@ func GetMetadata(ctx context.Context) (map[string]string, bool) {
 // Close session
 func sessionClose(server *GNMIDialoutServer, sessionid int) {
 	close(server.stopSignal[sessionid])
+	close(server.resSignal[sessionid])
 	delete(server.stream, sessionid)
 	delete(server.waitgroup, sessionid)
 	delete(server.stopSignal, sessionid)
+	delete(server.resSignal, sessionid)
+	delete(server.quitSignal, sessionid)
 	LogPrintf("gnmi.dialout.server.session[%d].close.complete", sessionid)
 }
 
 // Receive session
 func sessionRecv(server *GNMIDialoutServer, sessionid int) {
+	var response *gnmi.SubscribeResponse = nil
+	var err error
 	defer server.waitgroup[sessionid].Done()
 	if _, ok := server.stream[sessionid]; !ok {
 		LogPrintf("gnmi.dialout.server.session[%d].recv.close", sessionid)
 		return
 	}
 	for {
-		response, err := server.stream[sessionid].Recv()
-		if err != nil {
-			LogPrintf("gnmi.dialout.server.session[%d].recv.err=%v", sessionid, err)
+		select {
+		case <-server.quitSignal[sessionid]:
+			LogPrintf("gnmi.dialout.server.session[%d].recv.quit", sessionid)
 			return
+		case server.resSignal[sessionid] <- response:
+			response, err = server.stream[sessionid].Recv()
+			if err != nil {
+				LogPrintf("gnmi.dialout.server.session[%d].recv.err=%v", sessionid, err)
+				return
+			}
+			LogPrintf("gnmi.dialout.server.session[%d].recv.msg=%s", sessionid, response)
 		}
-		LogPrintf("gnmi.dialout.server.session[%d].recv.msg=%s", sessionid, response)
 	}
 }
 
@@ -169,6 +201,9 @@ func sessionSend(server *GNMIDialoutServer, sessionid int) {
 			} else if stop > 0 {
 				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.stop-interval=%v", sessionid, stop)
 			}
+		case <-server.quitSignal[sessionid]:
+			LogPrintf("gnmi.dialout.server.session[%d].stop-signal.quit", sessionid)
+			return
 		}
 	}
 }
@@ -186,22 +221,36 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	sessionCount++
 	sessionid := sessionCount
 	stopSignal := make(chan int64)
+	resSignal := make(chan *gnmi.SubscribeResponse)
+	quitSignal := make(chan struct{})
 	s.stream[sessionid] = stream
 	s.waitgroup[sessionid] = wg
 	s.stopSignal[sessionid] = stopSignal
+	s.resSignal[sessionid] = resSignal
+	s.quitSignal[sessionid] = quitSignal
 	LogPrintf("gnmi.dialout.server.session[%d].started addr=%s,username=%s,password=%s", sessionid, peer, username, password)
 
 	// Close publish session
 	defer sessionClose(s, sessionid)
 
-	// Receive publish message from client
-	s.waitgroup[sessionid].Add(1)
-	go sessionRecv(s, sessionid)
-
 	// Send publish message to client for control session
 	s.waitgroup[sessionid].Add(1)
 	go sessionSend(s, sessionid)
 
+	// Receive publish message from client
+	s.waitgroup[sessionid].Add(1)
+	go sessionRecv(s, sessionid)
+
+	// Check stream state
+	for {
+		if s.stream[sessionid].Context().Err() != nil {
+			break
+		}
+	}
+	// Close quit-signal channels
+	close(quitSignal)
+
+	// Wait & Done waitgroup
 	s.waitgroup[sessionid].Wait()
 
 	return nil
@@ -231,6 +280,8 @@ func NewGNMIDialoutServer(address string, insecure bool, skipverify bool, cafile
 		stream:     make(map[int]pb.GNMIDialOut_PublishServer),
 		waitgroup:  make(map[int]*sync.WaitGroup),
 		stopSignal: make(map[int]chan int64),
+		resSignal:  make(map[int]chan *gnmi.SubscribeResponse),
+		quitSignal: make(map[int]chan struct{}),
 	}
 	pb.RegisterGNMIDialOutServer(dialoutServer.GRPCServer, dialoutServer)
 	return dialoutServer, nil
