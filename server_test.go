@@ -2,6 +2,7 @@ package dialout
 
 import (
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -362,5 +363,145 @@ func TestGNMIDialOutErr(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	time.Sleep(time.Second * 1)
+}
+
+func TestGNMIDialOutControlSession(t *testing.T) {
+	// Logging
+	// Print = log.Print
+	// Printf = log.Printf
+
+	address := "localhost:8088"
+	insecure := true
+	wg := new(sync.WaitGroup)
+	quit := make(chan struct{})
+
+	server, err := NewGNMIDialoutServer(address, insecure, false, "", "", "", "", "")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer func() {
+		server.Close()
+		time.Sleep(time.Millisecond * 10)
+	}()
+	go server.Serve()
+	client, err := NewGNMIDialOutClient("", address, insecure, false, "", "", "", "", "", true)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer func() {
+		client.Close()
+		time.Sleep(time.Millisecond * 10)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-quit:
+				return
+			default:
+				if err := client.Send(
+					[]*gnmi.SubscribeResponse{
+						&gnmi.SubscribeResponse{
+							Response: &gnmi.SubscribeResponse_SyncResponse{
+								SyncResponse: true,
+							},
+						},
+						&gnmi.SubscribeResponse{
+							Response: &gnmi.SubscribeResponse_Update{
+								Update: &gnmi.Notification{
+									Timestamp: 0,
+									Prefix: &gnmi.Path{
+										Elem: []*gnmi.PathElem{
+											&gnmi.PathElem{
+												Name: "interfaces",
+											},
+											&gnmi.PathElem{
+												Name: "interface",
+												Key: map[string]string{
+													"name": "1/1",
+												},
+											},
+										},
+									},
+									Alias: "#1/1",
+								},
+							},
+						},
+						&gnmi.SubscribeResponse{
+							Response: &gnmi.SubscribeResponse_Update{
+								Update: &gnmi.Notification{
+									Timestamp: 0,
+									Prefix: &gnmi.Path{
+										Elem: []*gnmi.PathElem{
+											&gnmi.PathElem{
+												Name: "#1/1",
+											},
+										},
+									},
+									Update: []*gnmi.Update{
+										&gnmi.Update{
+											Path: &gnmi.Path{
+												Elem: []*gnmi.PathElem{
+													&gnmi.PathElem{
+														Name: "state",
+													},
+													&gnmi.PathElem{
+														Name: "counters",
+													},
+													&gnmi.PathElem{
+														Name: "in-pkts",
+													},
+												},
+											},
+											Val: &gnmi.TypedValue{
+												Value: &gnmi.TypedValue_UintVal{
+													UintVal: 100,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				); err != nil {
+					return
+				}
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+	time.Sleep(time.Second * 10)
+
+	var interval int64 = 1000000000 * 5 //5sec
+	if list := server.GetSessionInfo(); len(list) < 0 {
+		t.Error("there's no connection between server and client")
+		return
+	} else {
+		for key, _ := range list {
+			if err := server.PauseSession(key); err != nil {
+				t.Error(err)
+				return
+			}
+
+			if err := server.RestartSession(key); err != nil {
+				t.Error(err)
+				return
+			}
+
+			if err := server.IntervalPauseSession(key, interval); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}
+
+	close(quit)
+	wg.Wait()
 	time.Sleep(time.Second * 1)
 }
