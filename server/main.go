@@ -65,6 +65,9 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 	fmt.Println("5.Close:")
 	fmt.Println(" - Shutdown server.")
 	fmt.Println(" - Ex) $Enter:close")
+	fmt.Println("6.Receive:")
+	fmt.Println(" - Receive subscription of session from client.")
+	fmt.Println(" - Ex) $Enter:receive <SESSIONID>")
 	fmt.Println("***************************************************")
 
 	for {
