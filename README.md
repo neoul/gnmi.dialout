@@ -43,10 +43,47 @@ GRPC_GO_LOG_SEVERITY_LEVEL=info GRPC_GO_LOG_VERBOSITY_LEVEL=2 go test -v -run Te
 
 ## Simple Test Server
 
-The simple test server is implemented in `server/main.go`. This dial-out test server will print all the received Publish RPC (SubscribeResponse) messages to the screen.
+The simple test server is implemented in `server/main.go`. This dial-out test server will print all the received Publish RPC (SubscribeResponse) messages to the log file.
+Default log file is 'gnmi.log'. If you want to change file name or location, you can change that in 'server/main.go'.
+This dial-out test server has simple test command.
+1. Show: This command is displayed connected session information.
+2. Close: This command is shut down test server.
+3. Receive: This command is run to receive Publish RPC message from specific session.
+4. Stop: This command sends a control message to the client to stop sending Publish RPC messages.
+5. Interval Stop: This command sends a control message to the client to stop sending Publish RPC messages during specific interval.
+6. Restart: This command sends a control message to the client to restart sending Publish RPC messages.
+You can perform a simple test and operation check with the above command.
 
 ```bash
 cd server
 go run main.go -h
 go run main.go
+
+***************************************************
+[Command]
+1.Stop:
+ - Stop subscription of session.
+ - Ex) $Enter:<SESSIONID>
+2.Interval Stop:
+ - Stop subscription of session during interval
+ - Ex) Enter:<SESSIONID> <INTERVAL>
+3.Restart:
+ - Restart subscription of session.
+ - Ex) $Enter:<SESSIONID>
+4.Show:
+ - Display subscription session list.
+ - Ex) $Enter:show
+5.Close:
+ - Shutdown server.
+ - Ex) $Enter:close
+6.Receive:
+ - Receive subscription of session from client.
+ - Ex) $Enter:receive <SESSIONID>
+***************************************************
+Enter:show
+ID  IPAddress
+-------------------------------------
+1   192.168.35.10:63454 [stop=false]
+Enter:1
+Enter:close
 ```
