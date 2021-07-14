@@ -157,6 +157,10 @@ func send(client *GNMIDialOutClient) {
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
 			client.ctx, client.cancel = context.WithCancel(context.Background())
+			if client.ctx == nil || client.client == nil {
+				LogPrintf("gnmi.dialout.%v.send.err=failed to open context or client", client)
+				return
+			}
 			client.stream, client.Error = client.client.Publish(client.ctx)
 			if client.Error == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
@@ -212,6 +216,10 @@ func send_nokia(client *GNMIDialOutClient) {
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
 			client.ctx, client.cancel = context.WithCancel(context.Background())
+			if client.ctx == nil || client.nokiaclient == nil {
+				LogPrintf("gnmi.dialout.%v.send.err=failed to open context or client", client)
+				return
+			}
 			client.nokiastream, client.Error = client.nokiaclient.Publish(client.ctx)
 			if client.Error == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
