@@ -41,32 +41,6 @@ func (client *GNMIDialOutClient) String() string {
 	return "client[" + strconv.Itoa(client.Clientid) + "]"
 }
 
-func (client *GNMIDialOutClient) Publish(ctx context.Context, opts ...grpc.CallOption) (interface{}, error) {
-	if client == nil {
-		return nil, fmt.Errorf("gnmi dial-out client failed to open")
-	}
-
-	if strings.Compare(client.protocol, "NOKIA") == 0 {
-		if client.nokiaclient == nil {
-			return nil, fmt.Errorf("gnmi dial-out client failed to open")
-		}
-		stream, err := client.nokiaclient.Publish(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return stream, nil
-	} else {
-		if client.client == nil {
-			return nil, fmt.Errorf("gnmi dial-out client failed to open")
-		}
-		stream, err := client.client.Publish(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return stream, err
-	}
-}
-
 func (client *GNMIDialOutClient) Close() {
 	if client == nil {
 		return
@@ -299,6 +273,9 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 			err := fmt.Errorf("gnmi.dialout.client[%v].create.err", clientCount)
 			LogPrint(err)
 			return nil, err
+		}
+		if len(protocol) <= 0 {
+			protocol = "HFR"
 		}
 	}
 
