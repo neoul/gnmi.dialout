@@ -262,7 +262,7 @@ func send_nokia(client *GNMIDialOutClient) {
 // serverName is used to verify the hostname of the server certificate unless skipverify is given.
 // The serverName is also included in the client's handshake to support virtual hosting unless it is an IP address.
 func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipverify bool, caCrt string,
-	clientCert string, clientKey string, username string, password string, loadCertFromFiles bool, pbType string) (interface{}, error) {
+	clientCert string, clientKey string, username string, password string, loadCertFromFiles bool, pbType string) (*GNMIDialOutClient, error) {
 	clientCount++
 
 	opts, err := ClientCredentials(serverName, caCrt, clientCert, clientKey, skipverify, insecure, loadCertFromFiles)
