@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	nokiapb "github.com/karimra/sros-dialout"
 	pb "github.com/neoul/gnmi.dialout/proto/dialout"
 	"github.com/openconfig/gnmi/proto/gnmi"
 	"google.golang.org/grpc"
@@ -25,6 +27,20 @@ type GNMIDialOutClient struct {
 	Error      error
 
 	stream    pb.GNMIDialOut_PublishClient
+	conn      *grpc.ClientConn
+	respchan  chan *gnmi.SubscribeResponse
+	waitgroup *sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+}
+
+type GNMIDialOutNokiaClient struct {
+	Clientid int
+	nokiapb.DialoutTelemetryClient
+	StopSingal time.Duration // -1: start, 0: stop, 0>: stop interval
+	Error      error
+
+	stream    nokiapb.DialoutTelemetry_PublishClient
 	conn      *grpc.ClientConn
 	respchan  chan *gnmi.SubscribeResponse
 	waitgroup *sync.WaitGroup
@@ -175,8 +191,62 @@ func send(client *GNMIDialOutClient) {
 	}
 }
 
+func send_nokia(client *GNMIDialOutNokiaClient) {
+	defer client.waitgroup.Done()
+	for {
+		subscribeResponse, ok := <-client.respchan
+		if !ok {
+			if client.stream != nil {
+				client.stream.CloseSend()
+				client.stream = nil
+				LogPrintf("gnmi.dialout.%v.send.closed", client)
+			}
+			if client.cancel != nil {
+				client.cancel()
+				client.cancel = nil
+			}
+			LogPrintf("gnmi.dialout.%v.send.shutdown", client)
+			return
+		}
+		client.Error = io.EOF
+		if client.stream != nil {
+			client.Error = client.stream.Send(subscribeResponse)
+		}
+		if client.Error == io.EOF {
+			if client.stream != nil {
+				client.stream.CloseSend()
+				client.stream = nil
+				if client.cancel != nil {
+					client.cancel()
+					client.cancel = nil
+				}
+				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
+			}
+			client.ctx, client.cancel = context.WithCancel(context.Background())
+			client.stream, client.Error = client.Publish(client.ctx)
+			if client.Error == nil {
+				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
+				client.Error = client.stream.Send(subscribeResponse)
+			}
+		}
+		if client.Error != nil {
+			client.Error = fmt.Errorf("gnmi.dialout.%v.send.err=%v", client, client.Error)
+			if client.stream != nil {
+				client.stream.CloseSend()
+				client.stream = nil
+				LogPrintf("gnmi.dialout.%v.send.closed", client)
+			}
+			if client.cancel != nil {
+				client.cancel()
+				client.cancel = nil
+			}
+		}
+	}
+}
+
 // serverName is used to verify the hostname of the server certificate unless skipverify is given.
 // The serverName is also included in the client's handshake to support virtual hosting unless it is an IP address.
+/*
 func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipverify bool, caCrt string,
 	clientCert string, clientKey string, username string, password string, loadCertFromFiles bool) (*GNMIDialOutClient, error) {
 	clientCount++
@@ -220,7 +290,83 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 	client.waitgroup.Add(1)
 	go send(client)
 	LogPrintf("gnmi.dialout.%v.created", client)
+
 	return client, nil
+}
+*/
+
+func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipverify bool, caCrt string,
+	clientCert string, clientKey string, username string, password string, loadCertFromFiles bool, pbType string) (interface{}, error) {
+	clientCount++
+
+	opts, err := ClientCredentials(serverName, caCrt, clientCert, clientKey, skipverify, insecure, loadCertFromFiles)
+	if err != nil {
+		err := fmt.Errorf("gnmi.dialout.client[%v].credential.err=%v", clientCount, err)
+		LogPrint(err)
+		return nil, err
+	}
+	if !insecure {
+		opts = append(opts, UserCredentials(username, password)...)
+	}
+	// opts = append(opts, grpc.WithBlock())
+	// [FIXME] grpc.DialContext vs grpc.Dial
+	conn, err := grpc.Dial(serverAddress, opts...)
+	if err != nil {
+		err := fmt.Errorf("gnmi.dialout.client[%v].dial.err=%v", clientCount, err)
+		LogPrint(err)
+		return nil, err
+	}
+	// fmt.Println(conn.Target(), conn.GetState())
+
+	if strings.Compare(pbType, "NOKIA") == 0 {
+		//Nokia Proto Buffer
+		pbclient := nokiapb.NewDialoutTelemetryClient(conn)
+		if pbclient == nil {
+			err := fmt.Errorf("gnmi.dialout.client[%v].create.err", clientCount)
+			LogPrint(err)
+			return nil, err
+		}
+
+		client := &GNMIDialOutNokiaClient{
+			DialoutTelemetryClient: pbclient,
+			StopSingal:             time.Duration(-2),
+			conn:                   conn,
+			respchan:               make(chan *gnmi.SubscribeResponse, 32),
+			waitgroup:              new(sync.WaitGroup),
+			Clientid:               clientCount,
+		}
+
+		// Send publish messages to server
+		client.waitgroup.Add(1)
+		go send_nokia(client)
+		LogPrintf("gnmi.dialout.%v.created", client)
+
+		return client, nil
+	} else {
+		//HFR Proto Buffer
+		pbclient := pb.NewGNMIDialOutClient(conn)
+		if pbclient == nil {
+			err := fmt.Errorf("gnmi.dialout.client[%v].create.err", clientCount)
+			LogPrint(err)
+			return nil, err
+		}
+
+		client := &GNMIDialOutClient{
+			GNMIDialOutClient: pbclient,
+			StopSingal:        time.Duration(-2),
+			conn:              conn,
+			respchan:          make(chan *gnmi.SubscribeResponse, 32),
+			waitgroup:         new(sync.WaitGroup),
+			Clientid:          clientCount,
+		}
+
+		// Send publish messages to server
+		client.waitgroup.Add(1)
+		go send(client)
+		LogPrintf("gnmi.dialout.%v.created", client)
+
+		return client, nil
+	}
 }
 
 // ClientCredentials generates gRPC DialOptions for existing credentials.
