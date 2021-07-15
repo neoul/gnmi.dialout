@@ -157,10 +157,6 @@ func send(client *GNMIDialOutClient) {
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
 			client.ctx, client.cancel = context.WithCancel(context.Background())
-			if client.ctx == nil || client.client == nil {
-				LogPrintf("gnmi.dialout.%v.send.err=failed to open context or client", client)
-				return
-			}
 			client.stream, client.Error = client.client.Publish(client.ctx)
 			if client.Error == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
@@ -216,10 +212,6 @@ func send_nokia(client *GNMIDialOutClient) {
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
 			client.ctx, client.cancel = context.WithCancel(context.Background())
-			if client.ctx == nil || client.nokiaclient == nil {
-				LogPrintf("gnmi.dialout.%v.send.err=failed to open context or client", client)
-				return
-			}
 			client.nokiastream, client.Error = client.nokiaclient.Publish(client.ctx)
 			if client.Error == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
@@ -245,6 +237,8 @@ func send_nokia(client *GNMIDialOutClient) {
 // The serverName is also included in the client's handshake to support virtual hosting unless it is an IP address.
 func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipverify bool, caCrt string,
 	clientCert string, clientKey string, username string, password string, loadCertFromFiles bool, protocol string) (*GNMIDialOutClient, error) {
+	var pbclient pb.GNMIDialOutClient = nil            //Default
+	var npbclient nokiapb.DialoutTelemetryClient = nil //Nokia
 	clientCount++
 
 	opts, err := ClientCredentials(serverName, caCrt, clientCert, clientKey, skipverify, insecure, loadCertFromFiles)
@@ -266,8 +260,6 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 	}
 	// fmt.Println(conn.Target(), conn.GetState())
 
-	var pbclient pb.GNMIDialOutClient = nil            //HFR Proto Buffer
-	var npbclient nokiapb.DialoutTelemetryClient = nil //Nokia Proto Buffer
 	if strings.Compare(protocol, "NOKIA") == 0 {
 		npbclient = nokiapb.NewDialoutTelemetryClient(conn)
 		if npbclient == nil {
@@ -276,7 +268,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 			return nil, err
 		}
 	} else {
-		pbclient := pb.NewGNMIDialOutClient(conn)
+		pbclient = pb.NewGNMIDialOutClient(conn)
 		if pbclient == nil {
 			err := fmt.Errorf("gnmi.dialout.client[%v].create.err", clientCount)
 			LogPrint(err)
