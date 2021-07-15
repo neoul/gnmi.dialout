@@ -275,7 +275,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 			return nil, err
 		}
 		if len(protocol) <= 0 {
-			protocol = "HFR"
+			protocol = "DEFAULT"
 		}
 	}
 
