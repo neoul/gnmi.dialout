@@ -260,7 +260,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 	}
 	// fmt.Println(conn.Target(), conn.GetState())
 
-	if strings.Compare(protocol, "NOKIA") == 0 {
+	if strings.Compare(protocol, "GNMIC") == 0 {
 		npbclient = nokiapb.NewDialoutTelemetryClient(conn)
 		if npbclient == nil {
 			err := fmt.Errorf("gnmi.dialout.client[%v].create.err", clientCount)
@@ -292,7 +292,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 
 	// Send publish messages to server
 	client.waitgroup.Add(1)
-	if strings.Compare(protocol, "NOKIA") == 0 {
+	if strings.Compare(protocol, "GNMIC") == 0 {
 		go send_nokia(client)
 	} else {
 		go send(client)
