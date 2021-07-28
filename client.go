@@ -100,13 +100,15 @@ func compareTime(client *GNMIDialOutClient) bool {
 func recv(client *GNMIDialOutClient) {
 	defer client.waitgroup.Done()
 	for {
-		if client.stream == nil {
+		stream := client.stream
+		if stream == nil {
 			LogPrintf("gnmi.dialout.%v.recv.null.stream", client)
 			return
 		}
 		LogPrintf("gnmi.dialout.%v.recv.started", client)
-		publishResponse, err := client.stream.Recv()
+		publishResponse, err := stream.Recv()
 		if err != nil {
+			client.Error = err
 			LogPrintf("gnmi.dialout.%v.recv.closed.err=%v", client, err)
 			return
 		}
@@ -142,11 +144,12 @@ func send(client *GNMIDialOutClient) {
 			LogPrintf("gnmi.dialout.%v.send.stop=%v", client, client.StopSingal)
 			continue
 		}
-		client.Error = io.EOF
+		client.Error = nil
+		err := io.EOF
 		if client.stream != nil {
-			client.Error = client.stream.Send(subscribeResponse)
+			err = client.stream.Send(subscribeResponse)
 		}
-		if client.Error == io.EOF {
+		if err == io.EOF {
 			if client.stream != nil {
 				client.stream.CloseSend()
 				client.stream = nil
@@ -157,16 +160,16 @@ func send(client *GNMIDialOutClient) {
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
 			client.ctx, client.cancel = context.WithCancel(context.Background())
-			client.stream, client.Error = client.client.Publish(client.ctx)
-			if client.Error == nil {
+			client.stream, err = client.client.Publish(client.ctx)
+			if err == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
 				client.waitgroup.Add(1)
 				go recv(client)
-				client.Error = client.stream.Send(subscribeResponse)
+				err = client.stream.Send(subscribeResponse)
 			}
 		}
-		if client.Error != nil {
-			client.Error = fmt.Errorf("gnmi.dialout.%v.send.err=%v", client, client.Error)
+		if err != nil {
+			err = fmt.Errorf("gnmi.dialout.%v.send.err=%v", client, err)
 			if client.stream != nil {
 				client.stream.CloseSend()
 				client.stream = nil
@@ -176,6 +179,7 @@ func send(client *GNMIDialOutClient) {
 				client.cancel()
 				client.cancel = nil
 			}
+			client.Error = err
 		}
 	}
 }
@@ -197,11 +201,12 @@ func send_nokia(client *GNMIDialOutClient) {
 			LogPrintf("gnmi.dialout.%v.send.shutdown", client)
 			return
 		}
-		client.Error = io.EOF
+		client.Error = nil
+		err := io.EOF
 		if client.nokiastream != nil {
-			client.Error = client.nokiastream.Send(subscribeResponse)
+			err = client.nokiastream.Send(subscribeResponse)
 		}
-		if client.Error == io.EOF {
+		if err == io.EOF {
 			if client.nokiastream != nil {
 				client.nokiastream.CloseSend()
 				client.nokiastream = nil
@@ -212,14 +217,14 @@ func send_nokia(client *GNMIDialOutClient) {
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
 			client.ctx, client.cancel = context.WithCancel(context.Background())
-			client.nokiastream, client.Error = client.nokiaclient.Publish(client.ctx)
-			if client.Error == nil {
+			client.nokiastream, err = client.nokiaclient.Publish(client.ctx)
+			if err == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
-				client.Error = client.nokiastream.Send(subscribeResponse)
+				err = client.nokiastream.Send(subscribeResponse)
 			}
 		}
-		if client.Error != nil {
-			client.Error = fmt.Errorf("gnmi.dialout.%v.send.err=%v", client, client.Error)
+		if err != nil {
+			err = fmt.Errorf("gnmi.dialout.%v.send.err=%v", client, err)
 			if client.nokiastream != nil {
 				client.nokiastream.CloseSend()
 				client.nokiastream = nil
@@ -229,6 +234,7 @@ func send_nokia(client *GNMIDialOutClient) {
 				client.cancel()
 				client.cancel = nil
 			}
+			client.Error = err
 		}
 	}
 }
