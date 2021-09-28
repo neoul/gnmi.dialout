@@ -15,6 +15,7 @@ import (
 	pb "github.com/neoul/gnmi.dialout/proto/dialout"
 	"github.com/openconfig/gnmi/proto/gnmi"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -35,6 +36,13 @@ type GNMIDialOutClient struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	protocol    string
+}
+
+func (client *GNMIDialOutClient) GetState() connectivity.State {
+	if client == nil || client.conn == nil {
+		return 0
+	}
+	return client.conn.GetState()
 }
 
 func (client *GNMIDialOutClient) String() string {
