@@ -92,6 +92,10 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 			continue
 		} else if strings.Contains(cmd, "receive") {
 			args := strings.Split(cmd, " ")
+			if len(args) < 2 {
+				fmt.Println("%% Please enter session id")
+				continue
+			}
 			sessionId, err = strconv.Atoi(args[1])
 			if err != nil {
 				fmt.Println("%% Please enter session id")
@@ -113,6 +117,10 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 		}
 
 		args := strings.Split(cmd, " ")
+		if len(args) < 1 {
+			fmt.Println("%% Please enter session id")
+			continue
+		}
 		sessionId, err = strconv.Atoi(args[0])
 		if err != nil {
 			fmt.Println("%% Please enter session id")

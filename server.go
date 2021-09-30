@@ -28,6 +28,7 @@ type GNMIDialoutServer struct {
 	GRPCServer *grpc.Server
 	Listener   net.Listener
 
+	mutex      *sync.RWMutex
 	stream     map[int]pb.GNMIDialOut_PublishServer
 	waitgroup  map[int]*sync.WaitGroup
 	stopSignal map[int]chan int64
@@ -165,17 +166,24 @@ func sessionClose(server *GNMIDialoutServer, sessionid int) {
 func sessionRecv(server *GNMIDialoutServer, sessionid int) {
 	var response *gnmi.SubscribeResponse = nil
 	var err error
-	defer server.waitgroup[sessionid].Done()
-	if _, ok := server.stream[sessionid]; !ok {
+	server.mutex.RLock()
+	wg := server.waitgroup[sessionid]
+	_, ok := server.stream[sessionid]
+	quitSignal := server.quitSignal[sessionid]
+	respSignal := server.respSignal[sessionid]
+	server.mutex.RUnlock()
+
+	defer wg.Done()
+	if !ok {
 		LogPrintf("gnmi.dialout.server.session[%d].recv.close", sessionid)
 		return
 	}
 	for {
 		select {
-		case <-server.quitSignal[sessionid]:
+		case <-quitSignal:
 			LogPrintf("gnmi.dialout.server.session[%d].recv.quit", sessionid)
 			return
-		case server.respSignal[sessionid] <- response:
+		case respSignal <- response:
 			response, err = server.stream[sessionid].Recv()
 			if err != nil {
 				LogPrintf("gnmi.dialout.server.session[%d].recv.err=%v", sessionid, err)
@@ -188,20 +196,27 @@ func sessionRecv(server *GNMIDialoutServer, sessionid int) {
 
 // Send session
 func sessionSend(server *GNMIDialoutServer, sessionid int) {
-	defer server.waitgroup[sessionid].Done()
-	if _, ok := server.stream[sessionid]; !ok {
+	server.mutex.RLock()
+	wg := server.waitgroup[sessionid]
+	stream, ok := server.stream[sessionid]
+	stopSignal := server.stopSignal[sessionid]
+	quitSignal := server.quitSignal[sessionid]
+	server.mutex.RUnlock()
+
+	defer wg.Done()
+	if !ok {
 		LogPrintf("gnmi.dialout.server.session[%d].close", sessionid)
 		return
 	}
 	for {
 		select {
-		case stop := <-server.stopSignal[sessionid]:
+		case stop := <-stopSignal:
 			request := buildPublishResponse(stop)
 			if request == nil {
 				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.error=%s", sessionid, "not support range")
 				return
 			}
-			if err := server.stream[sessionid].Send(request); err != nil {
+			if err := stream.Send(request); err != nil {
 				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.error=%s", sessionid, err)
 				return
 			}
@@ -212,7 +227,7 @@ func sessionSend(server *GNMIDialoutServer, sessionid int) {
 			} else if stop > 0 {
 				LogPrintf("gnmi.dialout.server.session[%d].stop-signal.stop-interval=%v", sessionid, stop)
 			}
-		case <-server.quitSignal[sessionid]:
+		case <-quitSignal:
 			LogPrintf("gnmi.dialout.server.session[%d].stop-signal.quit", sessionid)
 			return
 		}
@@ -234,27 +249,30 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	stopSignal := make(chan int64)
 	respSignal := make(chan *gnmi.SubscribeResponse)
 	quitSignal := make(chan struct{})
+	s.mutex.Lock()
 	s.stream[sessionid] = stream
 	s.waitgroup[sessionid] = wg
 	s.stopSignal[sessionid] = stopSignal
 	s.respSignal[sessionid] = respSignal
 	s.quitSignal[sessionid] = quitSignal
+	s.mutex.Unlock()
 	LogPrintf("gnmi.dialout.server.session[%d].started addr=%s,username=%s,password=%s", sessionid, peer, username, password)
 
 	// Close publish session
 	defer sessionClose(s, sessionid)
 
 	// Send publish message to client for control session
-	s.waitgroup[sessionid].Add(1)
+	wg.Add(1)
 	go sessionSend(s, sessionid)
 
 	// Receive publish message from client
-	s.waitgroup[sessionid].Add(1)
+	wg.Add(1)
 	go sessionRecv(s, sessionid)
 
 	// Check stream state
 	for {
-		if s.stream[sessionid].Context().Err() != nil {
+		err := stream.Context().Err()
+		if err != nil {
 			break
 		}
 	}
@@ -262,7 +280,7 @@ func (s *GNMIDialoutServer) Publish(stream pb.GNMIDialOut_PublishServer) error {
 	close(quitSignal)
 
 	// Wait & Done waitgroup
-	s.waitgroup[sessionid].Wait()
+	wg.Wait()
 
 	return nil
 }
@@ -288,6 +306,7 @@ func NewGNMIDialoutServer(address string, insecure bool, skipverify bool, cafile
 	dialoutServer := &GNMIDialoutServer{
 		GRPCServer: grpc.NewServer(opts...),
 		Listener:   listener,
+		mutex:      &sync.RWMutex{},
 		stream:     make(map[int]pb.GNMIDialOut_PublishServer),
 		waitgroup:  make(map[int]*sync.WaitGroup),
 		stopSignal: make(map[int]chan int64),
