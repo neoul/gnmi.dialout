@@ -101,15 +101,15 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 				fmt.Println("%% Please enter session id")
 				continue
 			}
-			go func() {
+			go func(sid int) {
 				for {
-					_, err := server.Receive(sessionId)
+					_, err := server.Receive(sid)
 					if err != nil {
-						fmt.Println("\n%% Close session", sessionId)
+						fmt.Println("\n%% Close session", sid)
 						return
 					}
 				}
-			}()
+			}(sessionId)
 
 			continue
 		} else if len(cmd) <= 0 {
@@ -117,10 +117,6 @@ func runCmd(server *dialout.GNMIDialoutServer) {
 		}
 
 		args := strings.Split(cmd, " ")
-		if len(args) < 1 {
-			fmt.Println("%% Please enter session id")
-			continue
-		}
 		sessionId, err = strconv.Atoi(args[0])
 		if err != nil {
 			fmt.Println("%% Please enter session id")

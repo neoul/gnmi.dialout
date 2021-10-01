@@ -111,13 +111,16 @@ func (server *GNMIDialoutServer) GetSessionInfo() map[int]string {
 }
 
 func (server *GNMIDialoutServer) Receive(sessionid int) (*gnmi.SubscribeResponse, error) {
-	if server == nil || server.respSignal[sessionid] == nil {
+	server.mutex.RLock()
+	respSignal := server.respSignal[sessionid]
+	server.mutex.RUnlock()
+	if server == nil || respSignal == nil {
 		return nil, fmt.Errorf("gnmi.dialout.server.receive.err=fail to open response channel")
 	}
-	response, ok := <-server.respSignal[sessionid]
+	response, ok := <-respSignal
 	if ok {
 		if response == nil {
-			response, ok = <-server.respSignal[sessionid]
+			response, ok = <-respSignal
 			if !ok {
 				return nil, fmt.Errorf("gnmi.dialout.server.receive.err=fail to receive response")
 			}
@@ -168,7 +171,7 @@ func sessionRecv(server *GNMIDialoutServer, sessionid int) {
 	var err error
 	server.mutex.RLock()
 	wg := server.waitgroup[sessionid]
-	_, ok := server.stream[sessionid]
+	stream, ok := server.stream[sessionid]
 	quitSignal := server.quitSignal[sessionid]
 	respSignal := server.respSignal[sessionid]
 	server.mutex.RUnlock()
@@ -184,7 +187,7 @@ func sessionRecv(server *GNMIDialoutServer, sessionid int) {
 			LogPrintf("gnmi.dialout.server.session[%d].recv.quit", sessionid)
 			return
 		case respSignal <- response:
-			response, err = server.stream[sessionid].Recv()
+			response, err = stream.Recv()
 			if err != nil {
 				LogPrintf("gnmi.dialout.server.session[%d].recv.err=%v", sessionid, err)
 				return
