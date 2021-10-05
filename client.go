@@ -73,7 +73,7 @@ func (client *GNMIDialOutClient) Send(responses []*gnmi.SubscribeResponse) error
 		return fmt.Errorf("gnmi dial-out publish channel closed")
 	}
 	for i := range responses {
-		if len(responses) == cap(responses) {
+		if len(client.respchan) == cap(client.respchan) {
 			continue
 		}
 		client.respchan <- responses[i]
@@ -303,7 +303,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 		nokiaclient: npbclient,
 		StopSingal:  time.Duration(-2),
 		conn:        conn,
-		respchan:    make(chan *gnmi.SubscribeResponse, 64),
+		respchan:    make(chan *gnmi.SubscribeResponse, 32),
 		waitgroup:   new(sync.WaitGroup),
 		Clientid:    clientCount,
 		protocol:    protocol,

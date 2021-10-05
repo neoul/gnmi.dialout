@@ -383,7 +383,7 @@ func TestGNMIDialOutControlSession(t *testing.T) {
 	}
 	defer func() {
 		server.Close()
-		time.Sleep(time.Millisecond * 10)
+		time.Sleep(time.Millisecond * 20)
 	}()
 	go server.Serve()
 	client, err := NewGNMIDialOutClient("", address, insecure, false, "", "", "", "", "", true, "HFR")
@@ -476,14 +476,14 @@ func TestGNMIDialOutControlSession(t *testing.T) {
 			time.Sleep(time.Second)
 		}
 	}()
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 2)
 
 	var interval int64 = 1000000000 * 5 //5sec
-	if list := server.GetSessionInfo(); len(list) < 0 {
+	if list := server.GetSessionInfo(); len(list) == 0 {
 		t.Error("there's no connection between server and client")
 		return
 	} else {
-		for key, _ := range list {
+		for key := range list {
 			if err := server.PauseSession(key); err != nil {
 				t.Error(err)
 				return
