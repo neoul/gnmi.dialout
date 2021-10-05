@@ -170,8 +170,8 @@ func send(client *GNMIDialOutClient) {
 				}
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
-			// client.ctx, client.cancel = context.WithCancel(context.Background())
-			client.ctx, client.cancel = context.WithTimeout(context.Background(), time.Second*10)
+			client.ctx, client.cancel = context.WithCancel(context.Background())
+			// client.ctx, client.cancel = context.WithTimeout(context.Background(), time.Second*10)
 			client.stream, err = client.client.Publish(client.ctx)
 			if err == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
@@ -228,8 +228,8 @@ func send_nokia(client *GNMIDialOutClient) {
 				}
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
-			// client.ctx, client.cancel = context.WithCancel(context.Background())
-			client.ctx, client.cancel = context.WithTimeout(context.Background(), time.Second*10)
+			client.ctx, client.cancel = context.WithCancel(context.Background())
+			// client.ctx, client.cancel = context.WithTimeout(context.Background(), time.Second*10)
 			client.nokiastream, err = client.nokiaclient.Publish(client.ctx)
 			if err == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
