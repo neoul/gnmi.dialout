@@ -73,6 +73,9 @@ func (client *GNMIDialOutClient) Send(responses []*gnmi.SubscribeResponse) error
 		return fmt.Errorf("gnmi dial-out publish channel closed")
 	}
 	for i := range responses {
+		if len(responses) == cap(responses) {
+			continue
+		}
 		client.respchan <- responses[i]
 	}
 	return nil
@@ -167,7 +170,8 @@ func send(client *GNMIDialOutClient) {
 				}
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
-			client.ctx, client.cancel = context.WithCancel(context.Background())
+			// client.ctx, client.cancel = context.WithCancel(context.Background())
+			client.ctx, client.cancel = context.WithTimeout(context.Background(), time.Second*10)
 			client.stream, err = client.client.Publish(client.ctx)
 			if err == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
@@ -224,7 +228,8 @@ func send_nokia(client *GNMIDialOutClient) {
 				}
 				LogPrintf("gnmi.dialout.%v.send.canceled.old.stream", client)
 			}
-			client.ctx, client.cancel = context.WithCancel(context.Background())
+			// client.ctx, client.cancel = context.WithCancel(context.Background())
+			client.ctx, client.cancel = context.WithTimeout(context.Background(), time.Second*10)
 			client.nokiastream, err = client.nokiaclient.Publish(client.ctx)
 			if err == nil {
 				LogPrintf("gnmi.dialout.%v.send.(re)started", client)
@@ -298,7 +303,7 @@ func NewGNMIDialOutClient(serverName, serverAddress string, insecure bool, skipv
 		nokiaclient: npbclient,
 		StopSingal:  time.Duration(-2),
 		conn:        conn,
-		respchan:    make(chan *gnmi.SubscribeResponse, 32),
+		respchan:    make(chan *gnmi.SubscribeResponse, 64),
 		waitgroup:   new(sync.WaitGroup),
 		Clientid:    clientCount,
 		protocol:    protocol,
